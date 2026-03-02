@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Distribution, InventorySummary, InventoryBatch } from '@/types/database';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 
 interface ReportData {
@@ -12,24 +12,88 @@ interface ReportData {
   summary: InventorySummary[];
 }
 
+// Helper function to safely format dates
+function safeFormat(dateString: string | Date | undefined | null, formatStr: string, options?: any): string {
+  if (!dateString) {
+    return '-';
+  }
+  
+  try {
+    const date = new Date(dateString);
+    if (!isValid(date)) {
+      return '-';
+    }
+    return format(date, formatStr, options);
+  } catch (error) {
+    return '-';
+  }
+}
+
+// Helper function to safely calculate days until expiry
+function safeDaysUntilExpiry(expiryDateStr: string | undefined | null): number {
+  if (!expiryDateStr) {
+    return -999; // Return large negative number for invalid dates
+  }
+  
+  try {
+    const expiryDate = new Date(expiryDateStr);
+    if (!isValid(expiryDate)) {
+      return -999;
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const expiry = new Date(expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+    
+    const diff = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return diff;
+  } catch (error) {
+    return -999;
+  }
+}
+
+// Helper function to safely get expiry status string
+function getSafeExpiryStatus(expiryDateStr: string | undefined | null): string {
+  const daysUntil = safeDaysUntilExpiry(expiryDateStr);
+  
+  if (daysUntil === -999) return '-';
+  if (daysUntil < 0) return 'EXPIRED';
+  if (daysUntil === 0) return 'Hari ini';
+  if (daysUntil === 1) return '1 hari';
+  return daysUntil + ' hari';
+}
+
 export function generateDailyReport(data: ReportData) {
+  // Validate input data
+  if (!data || !data.dateRange || !data.dateRange.start || !data.dateRange.end) {
+    console.error('Invalid report data: missing dateRange');
+    return;
+  }
+  
+  if (!Array.isArray(data.batches) || !Array.isArray(data.distributions) || !Array.isArray(data.summary)) {
+    console.error('Invalid report data: missing arrays');
+    return;
+  }
+
   const doc = new jsPDF();
   let reportTitle = 'LAPORAN HARIAN INVENTORI';
-  let reportDate = format(new Date(data.dateRange.start), 'dd/MM/yyyy');
+  let reportDate = safeFormat(data.dateRange.start, 'dd/MM/yyyy');
   
   // Adjust title and date display based on filter type
   if (data.filterType === 'weekly') {
     reportTitle = 'LAPORAN MINGGUAN INVENTORI';
-    reportDate = `${format(new Date(data.dateRange.start), 'dd/MM')} - ${format(new Date(data.dateRange.end), 'dd/MM/yyyy')}`;
+    reportDate = `${safeFormat(data.dateRange.start, 'dd/MM')} - ${safeFormat(data.dateRange.end, 'dd/MM/yyyy')}`;
   } else if (data.filterType === 'monthly') {
     reportTitle = 'LAPORAN BULANAN INVENTORI';
-    reportDate = format(new Date(data.dateRange.start), 'MMMM yyyy', { locale: localeId });
+    reportDate = safeFormat(data.dateRange.start, 'MMMM yyyy', { locale: localeId });
   } else if (data.filterType === 'yearly') {
     reportTitle = 'LAPORAN TAHUNAN INVENTORI';
-    reportDate = format(new Date(data.dateRange.start), 'yyyy');
+    reportDate = safeFormat(data.dateRange.start, 'yyyy');
   } else if (data.filterType === 'range') {
     reportTitle = 'LAPORAN INVENTORI (CUSTOM RANGE)';
-    reportDate = `${format(new Date(data.dateRange.start), 'dd/MM')} - ${format(new Date(data.dateRange.end), 'dd/MM/yyyy')}`;
+    reportDate = `${safeFormat(data.dateRange.start, 'dd/MM')} - ${safeFormat(data.dateRange.end, 'dd/MM/yyyy')}`;
   }
   
   let yPos = 0;
@@ -296,17 +360,27 @@ export function generateDailyReport(data: ReportData) {
   yPos = 20;
   addPageHeader();
 
-  // Filter batches based on filter type
+  // Filter batches based on filter type - with safe date validation
   const filterBatches = data.batches.filter(b => {
-    const batchDate = new Date(b.production_date);
-    const startDate = new Date(data.dateRange.start);
-    const endDate = new Date(data.dateRange.end);
+    if (!b.production_date) return false;
     
-    batchDate.setHours(0, 0, 0, 0);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    
-    return batchDate >= startDate && batchDate <= endDate;
+    try {
+      const batchDate = new Date(b.production_date);
+      const startDate = new Date(data.dateRange.start);
+      const endDate = new Date(data.dateRange.end);
+      
+      if (!isValid(batchDate) || !isValid(startDate) || !isValid(endDate)) {
+        return false;
+      }
+      
+      batchDate.setHours(0, 0, 0, 0);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(0, 0, 0, 0);
+      
+      return batchDate >= startDate && batchDate <= endDate;
+    } catch (error) {
+      return false;
+    }
   });
 
   if (filterBatches.length > 0) {
@@ -320,8 +394,8 @@ export function generateDailyReport(data: ReportData) {
     const prodData = filterBatches.map(b => [
       b.product?.name || '-',
       b.initial_quantity.toString(),
-      format(new Date(b.production_date), 'dd/MM/yyyy'),
-      format(new Date(b.expiry_date), 'dd/MM/yyyy'),
+      safeFormat(b.production_date, 'dd/MM/yyyy'),
+      safeFormat(b.expiry_date, 'dd/MM/yyyy'),
     ]);
 
     autoTable(doc, {
@@ -454,9 +528,9 @@ export function generateDailyReport(data: ReportData) {
     .map(b => [
       b.product?.name || '-',
       b.current_quantity.toString(),
-      format(new Date(b.production_date), 'dd/MM/yyyy'),
-      format(new Date(b.expiry_date), 'dd/MM/yyyy'),
-      getDaysUntilExpiry(b.expiry_date),
+      safeFormat(b.production_date, 'dd/MM/yyyy'),
+      safeFormat(b.expiry_date, 'dd/MM/yyyy'),
+      getSafeExpiryStatus(b.expiry_date),
     ]);
 
   autoTable(doc, {
@@ -481,20 +555,18 @@ export function generateDailyReport(data: ReportData) {
 
   yPos = (doc as any).lastAutoTable.finalY + 10;
 
-  // Expiry Warnings
+  // Expiry Warnings - with safe date validation
   const allBatches = data.batches;
   const almostExpired = allBatches.filter(b => {
-    const daysUntil = Math.ceil(
-      (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return daysUntil >= 0 && daysUntil <= 3 && b.current_quantity > 0;
+    if (!b.expiry_date || b.current_quantity <= 0) return false;
+    const daysUntil = safeDaysUntilExpiry(b.expiry_date);
+    return daysUntil >= 0 && daysUntil <= 3;
   });
 
   const alreadyExpired = allBatches.filter(b => {
-    const daysUntil = Math.ceil(
-      (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return daysUntil < 0 && b.current_quantity > 0 && (!b.notes || !b.notes.includes('REJECTED'));
+    if (!b.expiry_date || b.current_quantity <= 0 || (b.notes && b.notes.includes('REJECTED'))) return false;
+    const daysUntil = safeDaysUntilExpiry(b.expiry_date);
+    return daysUntil < 0;
   });
 
   // Section: Almost Expired (≤3 hari)
@@ -507,15 +579,14 @@ export function generateDailyReport(data: ReportData) {
     yPos += 6;
 
     const almostExpiredData = almostExpired.map(b => {
-      const daysUntil = Math.ceil(
-        (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-      );
+      const daysUntil = safeDaysUntilExpiry(b.expiry_date);
+      const daysText = daysUntil === 0 ? 'Hari ini!' : daysUntil + ' hari';
       return [
         b.product?.name || '-',
         b.current_quantity.toString(),
-        format(new Date(b.production_date), 'dd/MM/yyyy'),
-        format(new Date(b.expiry_date), 'dd/MM/yyyy'),
-        daysUntil === 0 ? 'Hari ini!' : daysUntil + ' hari',
+        safeFormat(b.production_date, 'dd/MM/yyyy'),
+        safeFormat(b.expiry_date, 'dd/MM/yyyy'),
+        daysText,
       ];
     });
 
@@ -552,14 +623,12 @@ export function generateDailyReport(data: ReportData) {
     yPos += 6;
 
     const expiredData = alreadyExpired.map(b => {
-      const daysUntil = Math.ceil(
-        (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-      );
+      const daysUntil = safeDaysUntilExpiry(b.expiry_date);
       return [
         b.product?.name || '-',
         b.current_quantity.toString(),
-        format(new Date(b.production_date), 'dd/MM/yyyy'),
-        format(new Date(b.expiry_date), 'dd/MM/yyyy'),
+        safeFormat(b.production_date, 'dd/MM/yyyy'),
+        safeFormat(b.expiry_date, 'dd/MM/yyyy'),
         Math.abs(daysUntil) + ' hari lalu',
       ];
     });
@@ -604,8 +673,8 @@ export function generateDailyReport(data: ReportData) {
       return [
         b.product?.name || '-',
         b.initial_quantity?.toString() || '0',
-        format(new Date(b.production_date), 'dd/MM/yyyy'),
-        format(new Date(b.expiry_date), 'dd/MM/yyyy'),
+        safeFormat(b.production_date, 'dd/MM/yyyy'),
+        safeFormat(b.expiry_date, 'dd/MM/yyyy'),
         reason,
       ];
     });
@@ -640,37 +709,23 @@ export function generateDailyReport(data: ReportData) {
     doc.setTextColor(120, 120, 120);
     doc.line(14, 285, 196, 285);
     doc.text('Halaman ' + i + ' dari ' + pageCount, 105, 290, { align: 'center' });
-    doc.text('Dibuat: ' + format(new Date(), 'dd/MM/yyyy HH:mm'), 105, 296, { align: 'center' });
+    doc.text('Dibuat: ' + safeFormat(new Date(), 'dd/MM/yyyy HH:mm'), 105, 296, { align: 'center' });
   }
 
   // Generate filename based on filter type and date range
   let filename = 'Laporan_Inventori_';
   if (data.filterType === 'daily') {
-    filename += format(new Date(data.dateRange.start), 'yyyy-MM-dd') + '.pdf';
+    filename += safeFormat(data.dateRange.start, 'yyyy-MM-dd') + '.pdf';
   } else if (data.filterType === 'weekly' || data.filterType === 'range') {
-    filename += format(new Date(data.dateRange.start), 'yyyy-MM-dd') + '_to_' + 
-               format(new Date(data.dateRange.end), 'yyyy-MM-dd') + '.pdf';
+    filename += safeFormat(data.dateRange.start, 'yyyy-MM-dd') + '_to_' + 
+               safeFormat(data.dateRange.end, 'yyyy-MM-dd') + '.pdf';
   } else if (data.filterType === 'monthly') {
-    filename += format(new Date(data.dateRange.start), 'MM-yyyy') + '.pdf';
+    filename += safeFormat(data.dateRange.start, 'MM-yyyy') + '.pdf';
   } else if (data.filterType === 'yearly') {
-    filename += format(new Date(data.dateRange.start), 'yyyy') + '.pdf';
+    filename += safeFormat(data.dateRange.start, 'yyyy') + '.pdf';
   } else {
-    filename += format(new Date(data.dateRange.start), 'yyyy-MM-dd') + '.pdf';
+    filename += safeFormat(data.dateRange.start, 'yyyy-MM-dd') + '.pdf';
   }
   
   doc.save(filename);
-}
-
-function getDaysUntilExpiry(expiryDate: string): string {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiry = new Date(expiryDate);
-  expiry.setHours(0, 0, 0, 0);
-  
-  const diff = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  
-  if (diff < 0) return 'EXPIRED';
-  if (diff === 0) return 'Hari ini';
-  if (diff === 1) return '1 hari';
-  return diff + ' hari';
 }
