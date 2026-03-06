@@ -559,31 +559,6 @@ function ReportsPage() {
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Production Batches for Selected Date */}
-      {todayBatches.length > 0 && (
-        <div className="table-container mt-6">
-          <div className="p-4 border-b border-border bg-green-500/5">
-            <h3 className="font-semibold">📦 Produksi Periode Ini</h3>
-          </div>
-          <div className="divide-y divide-border">
-            {todayBatches.map((batch) => (
-              <div key={batch.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{batch.product?.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Produksi: {format(new Date(batch.production_date), 'dd MMMM', { locale: localeId })} • Exp: {format(new Date(batch.expiry_date), 'dd MMMM yyyy', { locale: localeId })}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">{batch.initial_quantity}</p>
-                  <p className="text-xs text-muted-foreground">Sisa: {batch.current_quantity}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Rekapitulasi Rider - Total Keseluruhan */}
       {filteredDistributions && filteredDistributions.length > 0 && (
         <div className="table-container mt-6">
