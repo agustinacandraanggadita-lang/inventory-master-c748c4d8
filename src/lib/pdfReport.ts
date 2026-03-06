@@ -363,7 +363,6 @@ export function generateDailyReport(data: ReportData) {
     yPos = (doc as any).lastAutoTable.finalY + 10;
   }
 
-<<<<<<< HEAD
   // PAGE 2: Production & Distribution
   doc.addPage();
   yPos = 20;
@@ -390,17 +389,6 @@ export function generateDailyReport(data: ReportData) {
     } catch (error) {
       return false;
     }
-=======
-  // === PRODUKSI HARI INI / PERIODE ===
-  const filterBatches = data.batches.filter(b => {
-    const batchDate = new Date(b.production_date);
-    const startDate = new Date(data.dateRange.start);
-    const endDate = new Date(data.dateRange.end);
-    batchDate.setHours(0, 0, 0, 0);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    return batchDate >= startDate && batchDate <= endDate;
->>>>>>> basmikuman/main
   });
   if (filterBatches.length > 0) {
     doc.addPage();
