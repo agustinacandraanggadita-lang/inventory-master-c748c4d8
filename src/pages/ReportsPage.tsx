@@ -110,6 +110,17 @@ function ReportsPage() {
   // Distributions are already filtered by dateRange from hook, no need to filter again
   const filteredDistributions = distributions || [];
 
+  // Dapatkan daftar rider unik dari distribusi
+  const riderList = Array.from(new Set(filteredDistributions.map(d => d.rider?.name).filter(Boolean)));
+
+  // Tambahkan filter rider
+  const [riderFilter, setRiderFilter] = useState<string>('all'); // 'all' untuk seluruh rider
+
+  // Filter distribusi sesuai rider jika riderFilter != 'all'
+  const filteredDistributionsByRider = riderFilter === 'all'
+    ? filteredDistributions
+    : filteredDistributions.filter(d => d.rider?.name === riderFilter);
+
   // Calculate summary stats
   const calculateStats = (batchesData: typeof batches, distData: typeof distributions) => {
     let totalProduced = 0;
@@ -134,7 +145,7 @@ function ReportsPage() {
     return { totalProduced, totalDistributed, totalSold, totalReturned, totalRejected, totalWarehouseRejected };
   };
 
-  const stats = calculateStats(filteredBatches, filteredDistributions);
+  const stats = calculateStats(filteredBatches, filteredDistributionsByRider);
 
   const todayBatches = filteredBatches || [];
   const totalCups = summary?.filter(s => s.category === 'product')
@@ -173,14 +184,13 @@ function ReportsPage() {
 
   const handleGenerateReport = async () => {
     if (!batches || !summary) return;
-    
     setIsGenerating(true);
     try {
       generateDailyReport({
         dateRange: dateRange,
         filterType: filterType,
         batches: filteredBatches,
-        distributions: filteredDistributions,
+        distributions: filteredDistributionsByRider, // gunakan filter rider
         summary: summary,
       });
     } finally {
@@ -372,6 +382,21 @@ function ReportsPage() {
         </div>
       </div>
 
+      {/* Filter Rider */}
+      <div className="mb-6 p-4 bg-card border border-border rounded-lg">
+        <label className="block text-sm font-semibold mb-3">Filter Rider</label>
+        <select
+          value={riderFilter}
+          onChange={e => setRiderFilter(e.target.value)}
+          className="input-field max-w-xs"
+        >
+          <option value="all">Seluruh Rider</option>
+          {riderList.map(rider => (
+            <option key={rider} value={rider}>{rider}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <div className="stat-card bg-primary/5 border-primary/20">
@@ -535,13 +560,13 @@ function ReportsPage() {
       </Collapsible>
 
       {/* Production Batches for Selected Date */}
-      {filteredBatches.length > 0 && (
+      {todayBatches.length > 0 && (
         <div className="table-container mt-6">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">🏭 Produksi Periode Ini</h3>
+          <div className="p-4 border-b border-border bg-green-500/5">
+            <h3 className="font-semibold">📦 Produksi Periode Ini</h3>
           </div>
           <div className="divide-y divide-border">
-            {filteredBatches.map((batch) => (
+            {todayBatches.map((batch) => (
               <div key={batch.id} className="p-4 flex items-center justify-between">
                 <div>
                   <p className="font-medium">{batch.product?.name}</p>
@@ -559,8 +584,44 @@ function ReportsPage() {
         </div>
       )}
 
-      {/* Rider Sales Summary - untuk perhitungan fee */}
+      {/* Rekapitulasi Rider - Total Keseluruhan */}
       {filteredDistributions && filteredDistributions.length > 0 && (
+        <div className="table-container mt-6">
+          <div className="p-4 border-b border-border bg-green-500/10">
+            <h3 className="font-semibold">🧮 Total Rekapitulasi Rider</h3>
+            <p className="text-xs text-muted-foreground mt-1">Total produk dan nominal penjualan seluruh rider pada periode ini</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Total Produk Terjual</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Total Nominal Penjualan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  let totalProduk = 0;
+                  let totalNominal = 0;
+                  filteredDistributions.forEach(dist => {
+                    totalProduk += dist.sold_quantity || 0;
+                    totalNominal += (dist.sold_quantity || 0) * (dist.batch?.product?.price || 0);
+                  });
+                  return (
+                    <tr className="border-b border-border bg-white">
+                      <td className="px-4 py-3 font-semibold text-green-600">{totalProduk} unit</td>
+                      <td className="px-4 py-3 font-semibold text-blue-600">Rp {totalNominal.toLocaleString('id-ID')}</td>
+                    </tr>
+                  );
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Rider Sales Summary - untuk perhitungan fee */}
+      {filteredDistributionsByRider && filteredDistributionsByRider.length > 0 && (
         <div className="table-container mt-6">
           <div className="p-4 border-b border-border bg-blue-500/5">
             <h3 className="font-semibold">💰 Rekapitulasi Penjualan Per Rider</h3>
@@ -590,7 +651,7 @@ function ReportsPage() {
                     totalRejected: number;
                   }>();
 
-                  filteredDistributions.forEach(dist => {
+                  filteredDistributionsByRider.forEach(dist => {
                     const rider = dist.rider?.name || 'Unknown';
                     if (!riderSummary.has(rider)) {
                       riderSummary.set(rider, {
@@ -605,7 +666,6 @@ function ReportsPage() {
                     const summary = riderSummary.get(rider)!;
                     const soldQty = dist.sold_quantity || 0;
                     const price = dist.batch?.product?.price || 0;
-                    
                     summary.totalQty += dist.quantity;
                     summary.totalSold += soldQty;
                     summary.totalNominal += soldQty * price;
