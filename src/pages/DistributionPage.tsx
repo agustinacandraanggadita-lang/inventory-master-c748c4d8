@@ -128,7 +128,7 @@ function DistributionPage() {
         }
         distributed.add(product.id);
 
-        // Find ALL valid batches for this product (sorted by expiry date - FIFO)
+        // Find ALL valid batches for this product (sorted by production date - FIFO)
         const validBatches = availableBatches?.filter(b => {
           if (b.product_id !== product.id) return false;
           if (b.current_quantity <= 0) return false;
@@ -142,7 +142,7 @@ function DistributionPage() {
           );
           return daysUntil >= 0;
         }).sort((a, b) => 
-          new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+          new Date(a.production_date).getTime() - new Date(b.production_date).getTime()
         ) || [];
         
         if (validBatches.length === 0) {

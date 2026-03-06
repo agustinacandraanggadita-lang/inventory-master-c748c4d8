@@ -77,26 +77,46 @@ export function generateDailyReport(data: ReportData) {
 
   // Ubah header dan tambahkan kolom Keterangan
   const summaryData = data.summary.map(item => {
-    const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
-    const total = item.total_in_inventory + inRider;
-    let keterangan = '';
-    if (item.category === 'product') {
-      totalCups += total;
-    } else {
-      totalAddons += total;
-    }
-    totalSold += item.total_sold;
-    totalReturned += item.total_returned;
-    totalRejected += item.total_rejected;
-    // Contoh keterangan: "Produk utama" atau "Add-on"
-    keterangan = item.category === 'product' ? 'Produk utama' : 'Add-on';
+    // Filter distribusi pada periode yang sesuai dan produk yang sama
+    const filteredDists = data.distributions.filter(dist =>
+      dist.batch?.product?.id === item.product_id
+    );
+    // Hitung total terjual hanya dari distribusi pada periode
+    const totalSoldInPeriod = filteredDists.reduce((sum, dist) => sum + (dist.sold_quantity || 0), 0);
+
+    // Hitung stok awal = stok gudang sebelum periode (stok_in_inventory - produksi hari ini)
+    // Penambahan/Masuk = total produksi pada periode
+    // Stok akhir = stok awal + penambahan - terjual
+    // Asumsi: item.total_in_inventory = stok gudang saat ini
+    //         item.total_produced = produksi pada periode
+    //         item.total_sold = total terjual (all time)
+    //         item.total_distributed = total distribusi (all time)
+    //         item.total_returned = total return (all time)
+    //         item.total_rejected = total reject (all time)
+
+    // Estimasi stok awal: stok akhir - penambahan + terjual pada periode
+    // Penambahan: produksi pada periode (harian/periode)
+    // Stok akhir: stok awal + penambahan - terjual
+
+    // Ambil produksi pada periode (jika ada fieldnya, misal item.total_produced_in_period)
+    const producedInPeriod = item.total_produced_in_period || 0;
+    // Stok akhir = stok_in_inventory (saat ini di gudang)
+    const stokAkhir = item.total_in_inventory;
+    // Stok awal = stok akhir - penambahan + terjual
+    const stokAwal = stokAkhir - producedInPeriod + totalSoldInPeriod;
+    // Penambahan/Masuk = produksi pada periode
+    const penambahan = producedInPeriod;
+    // Stok akhir = stokAwal + penambahan - terjual
+    // Sudah sesuai dengan rumus di atas
+
+    let keterangan = item.category === 'product' ? 'Produk utama' : 'Add-on';
     return [
       item.product_name,
       item.category === 'product' ? 'Produk' : 'Add-on',
-      item.total_in_inventory.toString(), // Stok Awal
-      inRider.toString(), // Penambahan/Masuk
-      (item.total_sold || 0).toString(),
-      total.toString(), // Stok Akhir
+      stokAwal < 0 ? '0' : stokAwal.toString(), // Stok Awal (tidak boleh minus)
+      penambahan > 0 ? penambahan.toString() : '', // Penambahan/Masuk
+      totalSoldInPeriod > 0 ? totalSoldInPeriod.toString() : '', // Terjual
+      stokAkhir < 0 ? '0' : stokAkhir.toString(), // Stok Akhir (tidak boleh minus)
       keterangan,
     ];
   });
@@ -126,28 +146,6 @@ export function generateDailyReport(data: ReportData) {
   });
 
   yPos = (doc as any).lastAutoTable.finalY + 10;
-
-  // Metrik Utama sesuai periode bulan
-  checkAndAddPage(30);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(42, 157, 143);
-  doc.text('METRIK UTAMA', 14, yPos);
-  yPos += 6;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(60, 60, 60);
-  doc.text('Total Cup: ' + totalCups + ' unit', 14, yPos);
-  yPos += 5;
-  doc.text('Total Add-on: ' + totalAddons + ' unit', 14, yPos);
-  yPos += 5;
-  doc.text('Total Terjual: ' + totalSold + ' unit', 14, yPos);
-  yPos += 5;
-  doc.text('Total Dikembalikan: ' + totalReturned + ' unit', 14, yPos);
-  yPos += 5;
-  doc.text('Total Ditolak/Rusak: ' + totalRejected + ' unit', 14, yPos);
-  yPos += 10;
 
   // === REKAPITULASI PENJUALAN RIDER & DETAIL ===
   if (data.distributions && data.distributions.length > 0) {
@@ -296,57 +294,6 @@ export function generateDailyReport(data: ReportData) {
       },
       margin: { left: 14, right: 14 },
     });
-    yPos = (doc as any).lastAutoTable.finalY + 10;
-  }
-
-  // === PRODUKSI HARI INI / PERIODE ===
-  const filterBatches = data.batches.filter(b => {
-    const batchDate = new Date(b.production_date);
-    const startDate = new Date(data.dateRange.start);
-    const endDate = new Date(data.dateRange.end);
-    batchDate.setHours(0, 0, 0, 0);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    return batchDate >= startDate && batchDate <= endDate;
-  });
-  if (filterBatches.length > 0) {
-    doc.addPage();
-    yPos = 20;
-    addPageHeader();
-    const prodTitle = data.filterType === 'daily' ? 'PRODUKSI HARI INI' : 'PRODUKSI DALAM PERIODE';
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(42, 157, 143);
-    doc.text(prodTitle, 14, yPos);
-    yPos += 6;
-
-    const prodData = filterBatches.map(b => [
-      b.product?.name || '-',
-      b.initial_quantity.toString(),
-      format(new Date(b.production_date), 'dd/MM/yyyy'),
-      format(new Date(b.expiry_date), 'dd/MM/yyyy'),
-    ]);
-
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Produk', 'Qty', 'Produksi', 'Kadaluarsa']],
-      body: prodData,
-      theme: 'grid',
-      headStyles: { 
-        fillColor: [42, 157, 143],
-        textColor: [255, 255, 255],
-        fontSize: 9,
-      },
-      bodyStyles: {
-        textColor: [50, 50, 50],
-        fontSize: 8,
-      },
-      alternateRowStyles: {
-        fillColor: [240, 248, 248],
-      },
-      margin: { left: 14, right: 14 },
-    });
-
     yPos = (doc as any).lastAutoTable.finalY + 10;
   }
 
