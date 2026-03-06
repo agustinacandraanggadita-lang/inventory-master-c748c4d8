@@ -138,34 +138,36 @@ export function generateDailyReport(data: ReportData) {
   let totalSold = 0;
   let totalReturned = 0;
   let totalRejected = 0;
-  
+
+  // Ubah header dan tambahkan kolom Keterangan
   const summaryData = data.summary.map(item => {
     const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
     const total = item.total_in_inventory + inRider;
-    
+    let keterangan = '';
     if (item.category === 'product') {
       totalCups += total;
     } else {
       totalAddons += total;
     }
-    
     totalSold += item.total_sold;
     totalReturned += item.total_returned;
     totalRejected += item.total_rejected;
-    
+    // Contoh keterangan: "Produk utama" atau "Add-on"
+    keterangan = item.category === 'product' ? 'Produk utama' : 'Add-on';
     return [
       item.product_name,
       item.category === 'product' ? 'Produk' : 'Add-on',
-      item.total_in_inventory.toString(),
-      inRider.toString(),
+      item.total_in_inventory.toString(), // Stok Awal
+      inRider.toString(), // Penambahan/Masuk
       (item.total_sold || 0).toString(),
-      total.toString(),
+      total.toString(), // Stok Akhir
+      keterangan,
     ];
   });
 
   autoTable(doc, {
     startY: yPos,
-    head: [['Produk', 'Tipe', 'Gudang', 'Rider', 'Terjual', 'Total']],
+    head: [['Produk', 'Tipe', 'Stok Awal', 'Penambahan/Masuk', 'Terjual', 'Stok Akhir', 'Keterangan']],
     body: summaryData,
     theme: 'grid',
     headStyles: { 
@@ -189,7 +191,7 @@ export function generateDailyReport(data: ReportData) {
 
   yPos = (doc as any).lastAutoTable.finalY + 10;
 
-  // Metrics
+  // Metrik Utama sesuai periode bulan
   checkAndAddPage(30);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -211,150 +213,157 @@ export function generateDailyReport(data: ReportData) {
   doc.text('Total Ditolak/Rusak: ' + totalRejected + ' unit', 14, yPos);
   yPos += 10;
 
-  // Rider Sales Summary - untuk perhitungan fee (DETAILED PER PRODUCT)
-  checkAndAddPage(80);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(42, 157, 143);
-  doc.text('REKAPITULASI PENJUALAN PER RIDER (untuk perhitungan fee)', 14, yPos);
-  yPos += 6;
+  // === REKAPITULASI PENJUALAN RIDER & DETAIL ===
+  if (data.distributions && data.distributions.length > 0) {
+    checkAndAddPage(40);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(42, 157, 143);
+    doc.text('REKAPITULASI PENJUALAN RIDER', 14, yPos);
+    yPos += 6;
 
-  // Group distributions by rider and build detailed table
-  const riderDistributions = new Map<string, (typeof data.distributions)>();
-  data.distributions.forEach(dist => {
-    const riderId = dist.rider_id;
-    if (!riderDistributions.has(riderId)) {
-      riderDistributions.set(riderId, []);
-    }
-    riderDistributions.get(riderId)!.push(dist);
-  });
-
-  if (riderDistributions.size > 0) {
-    // Build table data with detailed rows per product per rider
-    const detailedData: any[] = [];
-    let totalCupsSold = 0;
-    let totalNominalRevenue = 0;
-
-    // Sort riders by total nominal (highest first)
-    const sortedRiderEntries = Array.from(riderDistributions.entries())
-      .sort((a, b) => {
-        const nominalA = a[1].reduce((sum, d) => sum + ((d.sold_quantity || 0) * (d.batch?.product?.price || 0)), 0);
-        const nominalB = b[1].reduce((sum, d) => sum + ((d.sold_quantity || 0) * (d.batch?.product?.price || 0)), 0);
-        return nominalB - nominalA;
-      });
-
-    for (const [riderId, distributions] of sortedRiderEntries) {
-      const rider = distributions[0]?.rider;
-      let riderCupsSold = 0;
-      let riderNominal = 0;
-
-      // Add detail rows for each product
-      for (const dist of distributions) {
-        const productName = dist.batch?.product?.name || '-';
-        const isProduct = dist.batch?.product?.category === 'product';
-        const soldQty = dist.sold_quantity || 0;
-        const returnedQty = dist.returned_quantity || 0;
-        const rejectedQty = dist.rejected_quantity || 0;
-        const price = dist.batch?.product?.price || 0;
-        const nominal = soldQty * price;
-
-        // Track only products (not add-ons) for cup count
-        if (isProduct && soldQty > 0) {
-          riderCupsSold += soldQty;
-          totalCupsSold += soldQty;
-        }
-
-        riderNominal += nominal;
-        totalNominalRevenue += nominal;
-
-        // Format nominal with proper currency formatting
-        const nominalFormatted = nominal > 0 ? `Rp. ${nominal.toLocaleString('id-ID')}` : '-';
-
-        detailedData.push([
-          rider?.name || '-',
-          productName,
-          soldQty.toString(),
-          returnedQty.toString(),
-          rejectedQty.toString(),
-          nominalFormatted,
-          isProduct ? (soldQty > 0 ? soldQty.toString() : '0') : '(addon)',
-        ]);
+    // Group by rider
+    const riderMap = new Map();
+    data.distributions.forEach(dist => {
+      const rider = dist.rider?.name || 'Tanpa Nama';
+      if (!riderMap.has(rider)) {
+        riderMap.set(rider, { produk: 0, nominal: 0 });
       }
-
-      // Add rider summary row (bolder/different styling)
-      if (distributions.length > 1 || distributions.some(d => d.quantity > 0)) {
-        const nominalFormatted = riderNominal > 0 ? `Rp. ${riderNominal.toLocaleString('id-ID')}` : '-';
-        detailedData.push([
-          `SUBTOTAL: ${rider?.name}`,
-          '',
-          '',
-          '',
-          '',
-          nominalFormatted,
-          riderCupsSold.toString(),
-        ]);
-      }
-    }
+      const sold = dist.sold_quantity || 0;
+      const price = dist.batch?.product?.price || 0;
+      riderMap.get(rider).produk += sold;
+      riderMap.get(rider).nominal += sold * price;
+    });
+    const riderRows = Array.from(riderMap.entries()).map(([rider, val]) => [
+      rider,
+      val.produk.toString(),
+      'Rp ' + val.nominal.toLocaleString('id-ID'),
+    ]);
+    // Total keseluruhan
+    const totalProduk = Array.from(riderMap.values()).reduce((a, b) => a + b.produk, 0);
+    const totalNominal = Array.from(riderMap.values()).reduce((a, b) => a + b.nominal, 0);
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Rider', 'Produk', 'Terjual', 'Kembali', 'Reject', 'Nominal', 'Cup Terjual']],
-      body: detailedData,
+      head: [['Rider', 'Total Produk Terjual', 'Total Nominal Penjualan']],
+      body: riderRows,
       theme: 'grid',
-      headStyles: { 
+      headStyles: {
         fillColor: [42, 157, 143],
         textColor: [255, 255, 255],
-        fontSize: 8,
         fontStyle: 'bold',
+        fontSize: 9,
       },
       bodyStyles: {
         textColor: [50, 50, 50],
-        fontSize: 7,
+        fontSize: 8,
+      },
+      alternateRowStyles: {
+        fillColor: [240, 248, 248],
+      },
+      margin: { left: 14, right: 14 },
+    });
+    yPos = (doc as any).lastAutoTable.finalY + 6;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(42, 157, 143);
+    doc.text(`TOTAL KESELURUHAN: ${totalProduk} produk | Rp ${totalNominal.toLocaleString('id-ID')}`, 14, yPos);
+    yPos += 10;
+
+    // === DETAIL PENJUALAN PRODUK PER RIDER ===
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(42, 157, 143);
+    doc.text('DETAIL PENJUALAN PRODUK RIDER', 14, yPos);
+    yPos += 6;
+    // Tabel: Rider | Produk | Terjual | Kembali | Reject | Nominal | Cup Terjual
+    // Cup hanya dihitung jika kategori produk 'product'
+    const detailRows = [];
+    const riderDetailMap = new Map();
+    data.distributions.forEach(dist => {
+      const rider = dist.rider?.name || 'Tanpa Nama';
+      const product = dist.batch?.product?.name || '-';
+      const sold = dist.sold_quantity || 0;
+      const returned = dist.returned_quantity || 0;
+      const rejected = dist.rejected_quantity || 0;
+      const price = dist.batch?.product?.price || 0;
+      const nominal = sold * price;
+      const isCup = dist.batch?.product?.category === 'product';
+      const cupTerjual = isCup ? sold : 0;
+      if (!riderDetailMap.has(rider)) {
+        riderDetailMap.set(rider, { totalNominal: 0, totalCup: 0 });
+      }
+      riderDetailMap.get(rider).totalNominal += nominal;
+      riderDetailMap.get(rider).totalCup += cupTerjual;
+      detailRows.push([
+        rider,
+        product,
+        sold.toString(),
+        returned.toString(),
+        rejected.toString(),
+        'Rp ' + nominal.toLocaleString('id-ID'),
+        cupTerjual.toString(),
+      ]);
+    });
+    // Sort by rider
+    detailRows.sort((a, b) => a[0].localeCompare(b[0]));
+    // Insert subtotal per rider
+    let lastRider = null;
+    for (let i = 0; i < detailRows.length; i++) {
+      const rider = detailRows[i][0];
+      if (lastRider !== null && lastRider !== rider) {
+        // subtotal for lastRider
+        const subtotal = riderDetailMap.get(lastRider);
+        detailRows.splice(i, 0, [
+          `SUBTOTAL: ${lastRider}`,
+          '', '', '', '',
+          'Rp ' + subtotal.totalNominal.toLocaleString('id-ID'),
+          subtotal.totalCup.toString()
+        ]);
+        i++;
+      }
+      lastRider = rider;
+    }
+    // Add subtotal for last rider
+    if (lastRider && riderDetailMap.has(lastRider)) {
+      const subtotal = riderDetailMap.get(lastRider);
+      detailRows.push([
+        `SUBTOTAL: ${lastRider}`,
+        '', '', '', '',
+        'Rp ' + subtotal.totalNominal.toLocaleString('id-ID'),
+        subtotal.totalCup.toString()
+      ]);
+    }
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Rider', 'Produk', 'Terjual', 'Kembali', 'Reject', 'Nominal', 'Cup Terjual']],
+      body: detailRows,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [42, 157, 143],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+      },
+      bodyStyles: {
+        textColor: [50, 50, 50],
+        fontSize: 8,
       },
       alternateRowStyles: {
         fillColor: [240, 248, 248],
       },
       didParseCell: (data) => {
-        // Make subtotal rows bold
-        if (data.cell.text?.[0]?.includes('SUBTOTAL')) {
+        if (data.cell.text?.[0]?.includes('SUBTOTAL:')) {
           data.cell.styles.fontStyle = 'bold';
           data.cell.styles.fillColor = [220, 240, 240];
         }
       },
       margin: { left: 14, right: 14 },
-      columnStyles: {
-        0: { halign: 'left', cellWidth: 30 },
-        1: { halign: 'left', cellWidth: 35 },
-        2: { halign: 'center', textColor: [34, 139, 34] }, // green for sold
-        3: { halign: 'center', textColor: [184, 134, 11] }, // orange for returned
-        4: { halign: 'center', textColor: [178, 34, 34] }, // red for rejected
-        5: { halign: 'right', textColor: [0, 102, 204] }, // blue for nominal
-        6: { halign: 'center' },
-      },
     });
-
-    yPos = (doc as any).lastAutoTable.finalY + 8;
-
-    // Add totals summary at bottom
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(42, 157, 143);
-    
-    const totalNominalFormatted = `Rp. ${totalNominalRevenue.toLocaleString('id-ID')}`;
-    doc.text(`TOTAL CUP TERJUAL: ${totalCupsSold} unit`, 14, yPos);
-    yPos += 4;
-    doc.text(`TOTAL NOMINAL: ${totalNominalFormatted}`, 14, yPos);
-    yPos += 6;
-
-    // Add fee calculation note
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    doc.text('Catatan: Kolom "Cup Terjual" hanya menghitung produk utama, bukan add-on', 14, yPos);
-    yPos += 3;
-    doc.text('Gunakan "Total Nominal" untuk menghitung komisi: Total Nominal × fee%', 14, yPos);
+    yPos = (doc as any).lastAutoTable.finalY + 10;
   }
 
+<<<<<<< HEAD
   // PAGE 2: Production & Distribution
   doc.addPage();
   yPos = 20;
@@ -381,9 +390,22 @@ export function generateDailyReport(data: ReportData) {
     } catch (error) {
       return false;
     }
+=======
+  // === PRODUKSI HARI INI / PERIODE ===
+  const filterBatches = data.batches.filter(b => {
+    const batchDate = new Date(b.production_date);
+    const startDate = new Date(data.dateRange.start);
+    const endDate = new Date(data.dateRange.end);
+    batchDate.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+    return batchDate >= startDate && batchDate <= endDate;
+>>>>>>> basmikuman/main
   });
-
   if (filterBatches.length > 0) {
+    doc.addPage();
+    yPos = 20;
+    addPageHeader();
     const prodTitle = data.filterType === 'daily' ? 'PRODUKSI HARI INI' : 'PRODUKSI DALAM PERIODE';
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
@@ -421,51 +443,12 @@ export function generateDailyReport(data: ReportData) {
     yPos = (doc as any).lastAutoTable.finalY + 10;
   }
 
-  // Distribution
-  if (data.distributions.length > 0) {
-    checkAndAddPage(60);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(42, 157, 143);
-    doc.text('DISTRIBUSI', 14, yPos);
-    yPos += 6;
-
-    const distData = data.distributions.map(d => [
-      d.rider?.name || '-',
-      d.batch?.product?.name || '-',
-      d.quantity.toString(),
-      (d.sold_quantity || 0).toString(),
-      (d.returned_quantity || 0).toString(),
-      (d.rejected_quantity || 0).toString(),
-    ]);
-
-    autoTable(doc, {
-      startY: yPos,
-      head: [['Rider', 'Produk', 'Qty', 'Terjual', 'Retur', 'Tolak']],
-      body: distData,
-      theme: 'grid',
-      headStyles: { 
-        fillColor: [42, 157, 143],
-        textColor: [255, 255, 255],
-        fontSize: 9,
-      },
-      bodyStyles: {
-        textColor: [50, 50, 50],
-        fontSize: 8,
-      },
-      alternateRowStyles: {
-        fillColor: [240, 248, 248],
-      },
-      margin: { left: 14, right: 14 },
-    });
-
-    yPos = (doc as any).lastAutoTable.finalY + 10;
-  }
-
-  // Reject Summary Section
+  // === REJECT SUMMARY ===
   const riderRejected = data.distributions.reduce((acc, d) => acc + (d.rejected_quantity || 0), 0);
   if (riderRejected > 0) {
-    checkAndAddPage(40);
+    doc.addPage();
+    yPos = 20;
+    addPageHeader();
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(200, 60, 60); // Red color for reject
@@ -512,19 +495,8 @@ export function generateDailyReport(data: ReportData) {
     }
   }
 
-  // PAGE 3: Inventory Details
-  doc.addPage();
-  yPos = 20;
-  addPageHeader();
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(42, 157, 143);
-  doc.text('DETAIL BATCH INVENTORI', 14, yPos);
-  yPos += 6;
-
-  const batchData = data.batches
-    .filter(b => b.current_quantity > 0)
+  // === INVENTORY DETAILS ===
+  const batchData = data.batches.filter(b => b.current_quantity > 0)
     .map(b => [
       b.product?.name || '-',
       b.current_quantity.toString(),
@@ -532,28 +504,38 @@ export function generateDailyReport(data: ReportData) {
       safeFormat(b.expiry_date, 'dd/MM/yyyy'),
       getSafeExpiryStatus(b.expiry_date),
     ]);
+  if (batchData.length > 0) {
+    doc.addPage();
+    yPos = 20;
+    addPageHeader();
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(42, 157, 143);
+    doc.text('DETAIL BATCH INVENTORI', 14, yPos);
+    yPos += 6;
 
-  autoTable(doc, {
-    startY: yPos,
-    head: [['Produk', 'Stok', 'Produksi', 'Kadaluarsa', 'Sisa Hari']],
-    body: batchData,
-    theme: 'grid',
-    headStyles: { 
-      fillColor: [42, 157, 143],
-      textColor: [255, 255, 255],
-      fontSize: 9,
-    },
-    bodyStyles: {
-      textColor: [50, 50, 50],
-      fontSize: 8,
-    },
-    alternateRowStyles: {
-      fillColor: [240, 248, 248],
-    },
-    margin: { left: 14, right: 14 },
-  });
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Produk', 'Stok', 'Produksi', 'Kadaluarsa', 'Sisa Hari']],
+      body: batchData,
+      theme: 'grid',
+      headStyles: { 
+        fillColor: [42, 157, 143],
+        textColor: [255, 255, 255],
+        fontSize: 9,
+      },
+      bodyStyles: {
+        textColor: [50, 50, 50],
+        fontSize: 8,
+      },
+      alternateRowStyles: {
+        fillColor: [240, 248, 248],
+      },
+      margin: { left: 14, right: 14 },
+    });
 
-  yPos = (doc as any).lastAutoTable.finalY + 10;
+    yPos = (doc as any).lastAutoTable.finalY + 10;
+  }
 
   // Expiry Warnings - with safe date validation
   const allBatches = data.batches;
