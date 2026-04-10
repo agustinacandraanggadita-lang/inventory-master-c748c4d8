@@ -5,7 +5,8 @@ import { useDistributions } from '@/hooks/useDistributions';
 import { useProductionNeeds } from '@/hooks/useProductionNeeds';
 import { PageLayout } from '@/components/PageLayout';
 import { StatCard } from '@/components/StatCard';
-import { Package, Factory, Truck, AlertTriangle, Coffee, Plus, X, TrendingDown } from 'lucide-react';
+import { Leaderboard } from '@/components/Leaderboard';
+import { Package, Factory, Truck, AlertTriangle, Coffee, Plus, X, TrendingDown, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,6 +18,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
 function Dashboard() {
   const { data: products } = useProducts();
@@ -31,6 +37,8 @@ function Dashboard() {
   const [rejectionBatch, setRejectionBatch] = useState<any>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [showProductionNeeds, setShowProductionNeeds] = useState(false);
+  const [openProductSummary, setOpenProductSummary] = useState(false);
+  const [openTodayActivity, setOpenTodayActivity] = useState(false);
 
   // Calculate stats
   const totalInInventory = summary?.reduce((acc, s) => acc + s.total_in_inventory, 0) || 0;
@@ -185,54 +193,69 @@ function Dashboard() {
         </motion.div>
       )}
 
-      {/* Product Summary - Clickable */}
-      <div className="table-container">
-        <div className="p-4 border-b border-border">
-          <h3 className="font-semibold">Ringkasan Stok per Produk</h3>
-        </div>
-        <div className="divide-y divide-border">
-          {summary?.map((item) => {
-            const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
-            return (
-              <button
-                key={item.product_id}
-                onClick={() => setSelectedProduct(item)}
-                className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors text-left"
-              >
-                <div className="flex items-center gap-3 flex-1">
-                  <div className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center',
-                    item.category === 'product' 
-                      ? 'bg-primary/10 text-primary' 
-                      : 'bg-secondary/10 text-secondary'
-                  )}>
-                    <Package className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{item.product_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.category === 'product' ? 'Produk' : 'Add-on'} • {item.batches.length} batch
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">{item.total_in_inventory + inRider}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {item.total_in_inventory} gudang • {inRider} rider
-                  </p>
-                </div>
-              </button>
-            );
-          })}
-          {(!summary || summary.length === 0) && (
-            <div className="p-8 text-center text-muted-foreground">
-              <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>Belum ada data inventori</p>
-              <p className="text-sm">Mulai dengan menambahkan produk dan produksi</p>
+      {/* Leaderboard */}
+      <Leaderboard />
+
+      {/* Product Summary - Collapsible */}
+      <Collapsible open={openProductSummary} onOpenChange={setOpenProductSummary} className="mb-6">
+        <div className="table-container">
+          <CollapsibleTrigger className="w-full">
+            <div className="p-4 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
+              <h3 className="font-semibold">Ringkasan Stok per Produk</h3>
+              <ChevronDown 
+                className={cn(
+                  'w-5 h-5 transition-transform duration-200',
+                  openProductSummary && 'rotate-180'
+                )}
+              />
             </div>
-          )}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="divide-y divide-border">
+              {summary?.map((item) => {
+                const inRider = item.total_distributed - item.total_sold - item.total_returned - item.total_rejected;
+                return (
+                  <button
+                    key={item.product_id}
+                    onClick={() => setSelectedProduct(item)}
+                    className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={cn(
+                        'w-10 h-10 rounded-lg flex items-center justify-center',
+                        item.category === 'product' 
+                          ? 'bg-primary/10 text-primary' 
+                          : 'bg-secondary/10 text-secondary'
+                      )}>
+                        <Package className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">{item.product_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.category === 'product' ? 'Produk' : 'Add-on'} • {item.batches.length} batch
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">{item.total_in_inventory + inRider}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.total_in_inventory} gudang • {inRider} rider
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+              {(!summary || summary.length === 0) && (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>Belum ada data inventori</p>
+                  <p className="text-sm">Mulai dengan menambahkan produk dan produksi</p>
+                </div>
+              )}
+            </div>
+          </CollapsibleContent>
         </div>
-      </div>
+      </Collapsible>
 
       {/* Product Detail Modal */}
       <Dialog open={!!selectedProduct} onOpenChange={() => setSelectedProduct(null)}>
@@ -346,33 +369,45 @@ function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Today's Activity */}
+      {/* Today's Activity - Collapsible */}
       {todayDistributions && todayDistributions.length > 0 && (
-        <div className="table-container mt-6">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">Aktivitas Hari Ini</h3>
-          </div>
-          <div className="divide-y divide-border">
-            {todayDistributions.slice(0, 5).map((dist) => (
-              <div key={dist.id} className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
-                    <Truck className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{dist.rider?.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {dist.batch?.product?.name} • {dist.quantity} unit
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {format(new Date(dist.distributed_at), 'HH:mm')}
-                </span>
+        <Collapsible open={openTodayActivity} onOpenChange={setOpenTodayActivity} className="mt-6">
+          <div className="table-container">
+            <CollapsibleTrigger className="w-full">
+              <div className="p-4 border-b border-border flex items-center justify-between hover:bg-muted/50 transition-colors">
+                <h3 className="font-semibold">Aktivitas Hari Ini</h3>
+                <ChevronDown 
+                  className={cn(
+                    'w-5 h-5 transition-transform duration-200',
+                    openTodayActivity && 'rotate-180'
+                  )}
+                />
               </div>
-            ))}
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="divide-y divide-border">
+                {todayDistributions.map((dist) => (
+                  <div key={dist.id} className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-success/10 text-success flex items-center justify-center">
+                        <Truck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{dist.rider?.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {dist.batch?.product?.name} • {dist.quantity} unit
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(dist.distributed_at), 'HH:mm')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
           </div>
-        </div>
+        </Collapsible>
       )}
 
       {/* Production Needs Modal */}
