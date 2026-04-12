@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useRiders, useAddRider } from '@/hooks/useRiders';
+import { useRiders, useAddRider, useDeleteRider } from '@/hooks/useRiders';
 import { useAvailableBatches } from '@/hooks/useInventory';
 import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock, usePendingDistributions } from '@/hooks/useDistributions';
 import { useReconciliationSummary } from '@/hooks/useReconciliation';
 import { useProducts } from '@/hooks/useProducts';
 import { PageLayout } from '@/components/PageLayout';
-import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle, Database } from 'lucide-react';
+import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle, Database, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -18,6 +18,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -39,6 +48,7 @@ function DistributionPage() {
   const { data: pendingDistributions } = usePendingDistributions();
   const reconciliationSummary = useReconciliationSummary({ start: today, end: today });
   const addRider = useAddRider();
+  const deleteRider = useDeleteRider();
   const addDistribution = useAddDistribution();
   const bulkDistribution = useBulkDistribution();
   const adjustRiderStock = useAdjustRiderStock();
@@ -52,6 +62,10 @@ function DistributionPage() {
   const [autoDistributionRiderId, setAutoDistributionRiderId] = useState<string | null>(null);
   const [autoDistributionMode, setAutoDistributionMode] = useState<'default' | 'custom' | null>(null);
   const [adjustmentDate, setAdjustmentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  
+  // Delete rider confirmation state
+  const [riderToDelete, setRiderToDelete] = useState<{id: string; name: string} | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   
   // Rider form
   const [riderName, setRiderName] = useState('');
@@ -224,6 +238,23 @@ function DistributionPage() {
     setRiderName('');
     setRiderPhone('');
     setIsRiderOpen(false);
+  };
+
+  const handleDeleteRider = async () => {
+    if (!riderToDelete) return;
+    try {
+      await deleteRider.mutateAsync(riderToDelete.id);
+      setIsDeleteDialogOpen(false);
+      setRiderToDelete(null);
+    } catch (error) {
+      console.error('Error deleting rider:', error);
+    }
+  };
+
+  const openDeleteDialog = (e: React.MouseEvent, riderId: string, riderName: string) => {
+    e.stopPropagation();
+    setRiderToDelete({ id: riderId, name: riderName });
+    setIsDeleteDialogOpen(true);
   };
 
   const handleDistribute = async (e: React.FormEvent) => {
@@ -727,26 +758,39 @@ function DistributionPage() {
         </div>
         <div className="flex gap-2 overflow-x-auto pb-2">
           {riders?.map((rider) => (
-            <button
+            <div
               key={rider.id}
-              onClick={() => {
-                setAutoDistributionRiderId(rider.id);
-                setAutoDistributionMode(null); // Show modal
-              }}
-              className="flex-shrink-0 bg-card border border-border rounded-lg px-4 py-3 min-w-[140px] hover:border-primary hover:bg-primary/5 transition-all cursor-pointer text-left"
+              className="flex-shrink-0 relative group"
             >
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-                  <User className="w-4 h-4" />
+              <button
+                onClick={() => {
+                  setAutoDistributionRiderId(rider.id);
+                  setAutoDistributionMode(null); // Show modal
+                }}
+                className="w-full bg-card border border-border rounded-lg px-4 py-3 min-w-[140px] hover:border-primary hover:bg-primary/5 transition-all cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">{rider.name}</p>
+                    {rider.phone && (
+                      <p className="text-xs text-muted-foreground">{rider.phone}</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-sm">{rider.name}</p>
-                  {rider.phone && (
-                    <p className="text-xs text-muted-foreground">{rider.phone}</p>
-                  )}
-                </div>
-              </div>
-            </button>
+              </button>
+              {/* Delete button on hover */}
+              <button
+                onClick={(e) => openDeleteDialog(e, rider.id, rider.name)}
+                className="absolute top-1 right-1 p-1.5 bg-red-500/90 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                title={`Hapus rider ${rider.name}`}
+                disabled={deleteRider.isPending}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
           ))}
           {(!riders || riders.length === 0) && (
             <p className="text-sm text-muted-foreground">Belum ada rider</p>
@@ -1590,6 +1634,30 @@ function DistributionPage() {
           </>
         )}
       </div>
+
+      {/* Delete Rider Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Rider?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Anda akan menghapus rider <strong>{riderToDelete?.name}</strong>. 
+              Pastikan rider ini tidak memiliki distribusi aktif sebelum menghapusnya. 
+              Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-3 justify-end pt-4">
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteRider}
+              disabled={deleteRider.isPending}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              {deleteRider.isPending ? 'Menghapus...' : 'Hapus Rider'}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageLayout>
   );
 }
