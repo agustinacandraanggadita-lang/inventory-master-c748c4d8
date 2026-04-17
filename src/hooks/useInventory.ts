@@ -180,10 +180,23 @@ export function useUpdateBatchQuantity() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
+    mutationFn: async ({ 
+      id, 
+      quantity,
+      expiry_date 
+    }: { 
+      id: string; 
+      quantity: number;
+      expiry_date?: string;
+    }) => {
+      const updateData: any = { current_quantity: quantity };
+      if (expiry_date) {
+        updateData.expiry_date = expiry_date;
+      }
+      
       const { error } = await supabase
         .from('inventory_batches' as never)
-        .update({ current_quantity: quantity } as never)
+        .update(updateData as never)
         .eq('id', id);
       
       if (error) throw error;

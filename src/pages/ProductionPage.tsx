@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
 import { useInventoryBatches, useAddBatch, useRejectBatch, useUpdateBatchQuantity, useUpdateWarehouseReject } from '@/hooks/useInventory';
 import { PageLayout } from '@/components/PageLayout';
-import { Factory, Plus, Calendar, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle, Edit2, AlertOctagon } from 'lucide-react';
+import { Factory, Plus, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle, Edit2, AlertOctagon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -23,6 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 function ProductionPage() {
   const { data: products } = useProducts();
@@ -38,6 +40,7 @@ function ProductionPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedEditBatch, setSelectedEditBatch] = useState<any>(null);
   const [editedQuantity, setEditedQuantity] = useState('');
+  const [editedExpiryDate, setEditedExpiryDate] = useState('');
   const [warehouseRejectDialogOpen, setWarehouseRejectDialogOpen] = useState(false);
   const [selectedWarehouseRejectBatch, setSelectedWarehouseRejectBatch] = useState<any>(null);
   const [warehouseRejectQuantity, setWarehouseRejectQuantity] = useState('');
@@ -132,7 +135,7 @@ function ProductionPage() {
 
   const handleEditBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEditBatch || !editedQuantity) return;
+    if (!selectedEditBatch || !editedQuantity || !editedExpiryDate) return;
 
     const newQuantity = parseInt(editedQuantity);
     if (newQuantity < 0) {
@@ -140,14 +143,25 @@ function ProductionPage() {
       return;
     }
 
+    // Validate expiry date is after or equal to production date
+    const prodDate = new Date(selectedEditBatch.production_date);
+    const expDate = new Date(editedExpiryDate);
+    
+    if (expDate < prodDate) {
+      toast.error('Tanggal expired harus lebih besar atau sama dengan tanggal produksi');
+      return;
+    }
+
     await updateBatchQuantity.mutateAsync({
       id: selectedEditBatch.id,
       quantity: newQuantity,
+      expiry_date: editedExpiryDate,
     });
 
     setEditDialogOpen(false);
     setSelectedEditBatch(null);
     setEditedQuantity('');
+    setEditedExpiryDate('');
     toast.success('Batch berhasil diperbarui');
   };
 
@@ -432,10 +446,12 @@ function ProductionPage() {
                                           setEditDialogOpen(true);
                                           setSelectedEditBatch(batch);
                                           setEditedQuantity(batch.current_quantity.toString());
+                                          setEditedExpiryDate(batch.expiry_date);
                                         } else {
                                           setEditDialogOpen(false);
                                           setSelectedEditBatch(null);
                                           setEditedQuantity('');
+                                          setEditedExpiryDate('');
                                         }
                                       }}>
                                         <DialogTrigger asChild>
@@ -459,7 +475,6 @@ function ProductionPage() {
                                               <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
                                                 <p><span className="font-medium">Produk:</span> {batch.product?.name}</p>
                                                 <p><span className="font-medium">Produksi:</span> {format(new Date(batch.production_date), 'dd/MM/yyyy')}</p>
-                                                <p><span className="font-medium">Expired:</span> {format(new Date(batch.expiry_date), 'dd/MM/yyyy')}</p>
                                                 <p><span className="font-medium">Awal:</span> {batch.initial_quantity} unit</p>
                                               </div>
                                             </div>
@@ -478,6 +493,30 @@ function ProductionPage() {
                                                 Jumlah awal: {batch.initial_quantity} unit
                                               </p>
                                             </div>
+                                            <div>
+                                              <label className="block text-sm font-medium mb-2">Tanggal Expired</label>
+                                              <Popover>
+                                                <PopoverTrigger asChild>
+                                                  <button
+                                                    type="button"
+                                                    className="input-field w-full text-left"
+                                                  >
+                                                    {editedExpiryDate ? format(new Date(editedExpiryDate), 'dd/MM/yyyy') : 'Pilih tanggal'}
+                                                  </button>
+                                                </PopoverTrigger>
+                                                <PopoverContent align="start" className="w-auto p-0">
+                                                  <Calendar
+                                                    mode="single"
+                                                    selected={editedExpiryDate ? new Date(editedExpiryDate) : undefined}
+                                                    onSelect={(date) => setEditedExpiryDate(date ? format(date, 'yyyy-MM-dd') : '')}
+                                                    initialFocus
+                                                  />
+                                                </PopoverContent>
+                                              </Popover>
+                                              <p className="text-xs text-muted-foreground mt-1">
+                                                Tanggal expired saat ini: {format(new Date(batch.expiry_date), 'dd/MM/yyyy')}
+                                              </p>
+                                            </div>
                                             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
                                               <p className="text-xs text-blue-600">
                                                 ℹ️ Update ini berguna untuk balancing stok dengan kondisi riil di gudang.
@@ -487,7 +526,7 @@ function ProductionPage() {
                                               <Button
                                                 type="submit"
                                                 className="flex-1"
-                                                disabled={!editedQuantity || updateBatchQuantity.isPending}
+                                                disabled={!editedQuantity || !editedExpiryDate || updateBatchQuantity.isPending}
                                               >
                                                 {updateBatchQuantity.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
                                               </Button>
@@ -497,6 +536,7 @@ function ProductionPage() {
                                                   setEditDialogOpen(false);
                                                   setSelectedEditBatch(null);
                                                   setEditedQuantity('');
+                                                  setEditedExpiryDate('');
                                                 }}
                                                 className="btn-outline flex-1"
                                               >

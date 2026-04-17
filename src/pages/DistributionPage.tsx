@@ -92,6 +92,30 @@ function DistributionPage() {
     'Taro': 5,
   };
 
+  // Product order for sorting in reconciliation
+  const PRODUCT_ORDER = [
+    'Kopi Aren',
+    'Syrup Pandan',
+    'Syrup Caramel',
+    'Syrup Salted Caramel',
+    'Syrup Vanila',
+    'Syrup Tiramisu',
+    'Syrup Hazelnut',
+    'Milk Coklat',
+    'Milk Matcha',
+    'Milk Bubblegum',
+    'Milk Taro',
+  ];
+
+  // Helper function to get product order index
+  const getProductOrderIndex = (productName: string): number => {
+    const index = PRODUCT_ORDER.findIndex(name => 
+      productName.toLowerCase().includes(name.toLowerCase()) || 
+      name.toLowerCase().includes(productName.toLowerCase())
+    );
+    return index === -1 ? PRODUCT_ORDER.length : index;
+  };
+
   const handleAutoDistribute = async (mode: 'default' | 'custom') => {
     if (!autoDistributionRiderId) return;
     
@@ -574,28 +598,50 @@ function DistributionPage() {
                     </button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto border border-border rounded-lg p-2">
-                    {availableBatches?.map((batch) => (
-                      <label
-                        key={batch.id}
-                        className={cn(
-                          'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
-                          selectedBatches.includes(batch.id)
-                            ? 'bg-primary/10 border border-primary/20'
-                            : 'bg-muted/50 hover:bg-muted'
-                        )}
-                      >
-                        <Checkbox
-                          checked={selectedBatches.includes(batch.id)}
-                          onCheckedChange={() => toggleBatchSelection(batch.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{batch.product?.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Stok: {batch.current_quantity} • Exp: {format(new Date(batch.expiry_date), 'dd/MM')}
-                          </p>
-                        </div>
-                      </label>
-                    ))}
+                    {availableBatches?.map((batch) => {
+                      // Get selected product IDs
+                      const selectedProductIds = new Set(
+                        availableBatches
+                          ?.filter(b => selectedBatches.includes(b.id))
+                          .map(b => b.product_id) || []
+                      );
+                      
+                      // Check if this batch's product is already selected
+                      const isProductAlreadySelected = selectedProductIds.has(batch.product_id) && 
+                                                     !selectedBatches.includes(batch.id);
+                      
+                      return (
+                        <label
+                          key={batch.id}
+                          className={cn(
+                            'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border',
+                            selectedBatches.includes(batch.id)
+                              ? 'bg-primary/10 border-primary/30 shadow-sm'
+                              : isProductAlreadySelected
+                              ? 'bg-red-50 border-red-300 opacity-70'
+                              : 'bg-muted/50 border-transparent hover:bg-muted'
+                          )}
+                        >
+                          <Checkbox
+                            checked={selectedBatches.includes(batch.id)}
+                            onCheckedChange={() => toggleBatchSelection(batch.id)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-sm truncate">{batch.product?.name}</p>
+                              {isProductAlreadySelected && (
+                                <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full font-medium shrink-0">
+                                  Sudah dipilih
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Produksi: {format(new Date(batch.production_date), 'dd/MM/yyyy')} • Stok: {batch.current_quantity} • Exp: {format(new Date(batch.expiry_date), 'dd/MM')}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
                     {(!availableBatches || availableBatches.length === 0) && (
                       <p className="text-center text-muted-foreground py-4">
                         Tidak ada stok tersedia
@@ -915,34 +961,56 @@ function DistributionPage() {
                       </button>
                     </div>
                     <div className="space-y-2 max-h-60 overflow-y-auto border border-border rounded-lg p-2">
-                      {availableBatches?.map((batch) => (
-                        <label
-                          key={batch.id}
-                          className={cn(
-                            'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
-                            selectedBatches.includes(batch.id)
-                              ? 'bg-primary/10 border border-primary/20'
-                              : 'bg-muted/50 hover:bg-muted'
-                          )}
-                        >
-                          <Checkbox
-                            checked={selectedBatches.includes(batch.id)}
-                            onCheckedChange={() => {
-                              setSelectedBatches(prev => 
-                                prev.includes(batch.id) 
-                                  ? prev.filter(id => id !== batch.id)
-                                  : [...prev, batch.id]
-                              );
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">{batch.product?.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Stok: {batch.current_quantity} • Exp: {format(new Date(batch.expiry_date), 'dd/MM')}
-                            </p>
-                          </div>
-                        </label>
-                      ))}
+                      {availableBatches?.map((batch) => {
+                        // Get selected product IDs
+                        const selectedProductIds = new Set(
+                          availableBatches
+                            ?.filter(b => selectedBatches.includes(b.id))
+                            .map(b => b.product_id) || []
+                        );
+                        
+                        // Check if this batch's product is already selected
+                        const isProductAlreadySelected = selectedProductIds.has(batch.product_id) && 
+                                                       !selectedBatches.includes(batch.id);
+                        
+                        return (
+                          <label
+                            key={batch.id}
+                            className={cn(
+                              'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border',
+                              selectedBatches.includes(batch.id)
+                                ? 'bg-primary/10 border-primary/30 shadow-sm'
+                                : isProductAlreadySelected
+                                ? 'bg-red-50 border-red-300 opacity-70'
+                                : 'bg-muted/50 border-transparent hover:bg-muted'
+                            )}
+                          >
+                            <Checkbox
+                              checked={selectedBatches.includes(batch.id)}
+                              onCheckedChange={() => {
+                                setSelectedBatches(prev => 
+                                  prev.includes(batch.id) 
+                                    ? prev.filter(id => id !== batch.id)
+                                    : [...prev, batch.id]
+                                );
+                              }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-sm truncate">{batch.product?.name}</p>
+                                {isProductAlreadySelected && (
+                                  <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full font-medium shrink-0">
+                                    Sudah dipilih
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Produksi: {format(new Date(batch.production_date), 'dd/MM/yyyy')} • Stok: {batch.current_quantity} • Exp: {format(new Date(batch.expiry_date), 'dd/MM')}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
                       {(!availableBatches || availableBatches.length === 0) && (
                         <p className="text-center text-muted-foreground py-4">
                           Tidak ada stok tersedia
@@ -1101,6 +1169,10 @@ function DistributionPage() {
                     const activeDists = riderDists.filter(dist => {
                       const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
                       return remaining > 0;
+                    }).sort((a, b) => {
+                      const aIndex = getProductOrderIndex(a.batch?.product?.name || '');
+                      const bIndex = getProductOrderIndex(b.batch?.product?.name || '');
+                      return aIndex - bIndex;
                     });
                     
                     // Skip rider jika semua produk sudah habis
@@ -1284,18 +1356,55 @@ function DistributionPage() {
                                   'return': '↩ Kembali',
                                   'reject': '✗ Tolak'
                                 }[state.action || 'sell'];
+                                
+                                // Calculate values
+                                const isSold = state.action === 'sell';
+                                const quantity = parseInt(state.amount || '0');
+                                const price = (dist.batch?.product?.price || 0) * 1; // Ensure numeric
+                                const revenue = quantity * price; // Always calculate for display
+                                
                                 return (
                                   <div key={dist.id} className="flex items-center justify-between text-xs bg-white/50 rounded p-1.5">
-                                    <span className="font-medium text-primary truncate">
-                                      {dist.batch?.product?.name}
-                                    </span>
-                                    <span className="text-primary/70 ml-2">
-                                      {state.amount || '0'} × {actionLabel}
+                                    <div className="flex-1 min-w-0">
+                                      <span className="font-medium text-primary truncate">
+                                        {dist.batch?.product?.name}
+                                      </span>
+                                      {quantity > 0 && (
+                                        <p className="text-primary/70 text-xs font-semibold">
+                                          Rp {revenue.toLocaleString('id-ID')}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <span className="text-primary/70 ml-2 whitespace-nowrap">
+                                      {quantity} × {actionLabel}
                                     </span>
                                   </div>
                                 );
                               })}
                             </div>
+                            
+                            {/* Total revenue if there are sales */}
+                            {activeDists.filter(dist => {
+                              const state = adjustmentStates[dist.id];
+                              return state?.amount && parseInt(state.amount) > 0 && state.action === 'sell';
+                            }).length > 0 && (
+                              <div className="border-t border-primary/20 pt-2 mt-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-primary">💰 Total Penjualan:</span>
+                                  <span className="text-xs font-bold text-success">
+                                    Rp {activeDists.filter(dist => {
+                                      const state = adjustmentStates[dist.id];
+                                      return state?.amount && parseInt(state.amount) > 0 && state.action === 'sell';
+                                    }).reduce((total, dist) => {
+                                      const state = adjustmentStates[dist.id];
+                                      const quantity = parseInt(state?.amount || '0');
+                                      const price = dist.batch?.product?.price || 0;
+                                      return total + (quantity * price);
+                                    }, 0).toLocaleString('id-ID')}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                             {activeDists.every(dist => {
                               const state = adjustmentStates[dist.id];
                               return !state?.amount || parseInt(state.amount) === 0;
@@ -1375,6 +1484,13 @@ function DistributionPage() {
                 {Array.from(new Set(pendingDistributions.map(d => d.rider_id)))
                   .map((riderId) => {
                     const riderDists = pendingDistributions.filter(d => d.rider_id === riderId);
+                    
+                    // Sort by product order
+                    const sortedDists = riderDists.sort((a, b) => {
+                      const aIndex = getProductOrderIndex(a.batch?.product?.name || '');
+                      const bIndex = getProductOrderIndex(b.batch?.product?.name || '');
+                      return aIndex - bIndex;
+                    });
                     const rider = riderDists[0]?.rider;
                     const isOpen = adjustmentRiderId === `pending-${riderId}`;
 
@@ -1427,7 +1543,7 @@ function DistributionPage() {
                                   </ul>
                                 </div>
 
-                                {riderDists.map((dist) => {
+                                {sortedDists.map((dist) => {
                                   const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
                                   const state = adjustmentStates[dist.id] || { action: 'sell', amount: '' };
 
@@ -1502,7 +1618,7 @@ function DistributionPage() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        riderDists.forEach(dist => {
+                                        sortedDists.forEach(dist => {
                                           const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
                                           updateAdjustmentState(dist.id, 'action', 'sell');
                                           updateAdjustmentState(dist.id, 'amount', remaining.toString());
@@ -1515,7 +1631,7 @@ function DistributionPage() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        riderDists.forEach(dist => {
+                                        sortedDists.forEach(dist => {
                                           const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
                                           updateAdjustmentState(dist.id, 'action', 'return');
                                           updateAdjustmentState(dist.id, 'amount', remaining.toString());
@@ -1528,7 +1644,7 @@ function DistributionPage() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        riderDists.forEach(dist => {
+                                        sortedDists.forEach(dist => {
                                           const remaining = dist.quantity - (dist.sold_quantity || 0) - (dist.returned_quantity || 0) - (dist.rejected_quantity || 0);
                                           updateAdjustmentState(dist.id, 'action', 'reject');
                                           updateAdjustmentState(dist.id, 'amount', remaining.toString());
@@ -1545,7 +1661,7 @@ function DistributionPage() {
                                 <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
                                   <p className="text-xs font-semibold text-orange-700 mb-2">📋 Preview Perubahan:</p>
                                   <div className="space-y-1 max-h-48 overflow-y-auto">
-                                    {riderDists.filter(dist => {
+                                    {sortedDists.filter(dist => {
                                       const state = adjustmentStates[dist.id];
                                       return state?.amount && parseInt(state.amount) > 0;
                                     }).map(dist => {
@@ -1556,19 +1672,56 @@ function DistributionPage() {
                                         'reject': '✗ Tolak'
                                       }[state.action || 'sell'];
                                       
+                                      // Calculate values
+                                      const isSold = state.action === 'sell';
+                                      const quantity = parseInt(state.amount || '0');
+                                      const price = (dist.batch?.product?.price || 0) * 1; // Ensure numeric
+                                      const revenue = quantity * price; // Always calculate for display
+                                      
                                       return (
                                         <div key={dist.id} className="flex items-center justify-between text-xs bg-white/50 rounded p-1.5">
-                                          <span className="font-medium text-orange-700 truncate">
-                                            {dist.batch?.product?.name}
-                                          </span>
-                                          <span className="text-orange-600 ml-2">
-                                            {state.amount || '0'} × {actionLabel}
+                                          <div className="flex-1 min-w-0">
+                                            <span className="font-medium text-orange-700 truncate">
+                                              {dist.batch?.product?.name}
+                                            </span>
+                                            {quantity > 0 && (
+                                              <p className="text-orange-600 text-xs font-semibold">
+                                                Rp {revenue.toLocaleString('id-ID')}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <span className="text-orange-600 ml-2 whitespace-nowrap">
+                                            {quantity} × {actionLabel}
                                           </span>
                                         </div>
                                       );
                                     })}
                                   </div>
-                                  {riderDists.every(dist => {
+                                  
+                                  {/* Total revenue if there are sales */}
+                                  {sortedDists.filter(dist => {
+                                    const state = adjustmentStates[dist.id];
+                                    return state?.amount && parseInt(state.amount) > 0 && state.action === 'sell';
+                                  }).length > 0 && (
+                                    <div className="border-t border-orange-500/20 pt-2 mt-2">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-orange-700">💰 Total Penjualan:</span>
+                                        <span className="text-xs font-bold text-success">
+                                          Rp {sortedDists.filter(dist => {
+                                            const state = adjustmentStates[dist.id];
+                                            return state?.amount && parseInt(state.amount) > 0 && state.action === 'sell';
+                                          }).reduce((total, dist) => {
+                                            const state = adjustmentStates[dist.id];
+                                            const quantity = parseInt(state?.amount || '0');
+                                            const price = dist.batch?.product?.price || 0;
+                                            return total + (quantity * price);
+                                          }, 0).toLocaleString('id-ID')}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {sortedDists.every(dist => {
                                     const state = adjustmentStates[dist.id];
                                     return !state?.amount || parseInt(state.amount) === 0;
                                   }) && (
