@@ -3,43 +3,57 @@ import { supabase } from '@/lib/supabase';
 import type { Distribution } from '@/types/database';
 import { toast } from 'sonner';
 
+const DISTRIBUTIONS_PAGE_SIZE = 1000;
+
+async function fetchDistributionPages(date?: string, dateRange?: { start: string; end: string }) {
+  const allRows: Distribution[] = [];
+  let from = 0;
+
+  while (true) {
+    let query = supabase
+      .from('distributions' as never)
+      .select(`
+        *,
+        rider:riders(*),
+        batch:inventory_batches(
+          *,
+          product:products(*)
+        )
+      `)
+      .order('distributed_at', { ascending: false })
+      .range(from, from + DISTRIBUTIONS_PAGE_SIZE - 1);
+
+    if (dateRange) {
+      query = query
+        .gte('distributed_at', `${dateRange.start}T00:00:00`)
+        .lte('distributed_at', `${dateRange.end}T23:59:59`);
+    } else if (date) {
+      query = query
+        .gte('distributed_at', `${date}T00:00:00`)
+        .lte('distributed_at', `${date}T23:59:59`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    const pageRows = (data ?? []) as Distribution[];
+    allRows.push(...pageRows);
+
+    if (pageRows.length < DISTRIBUTIONS_PAGE_SIZE) {
+      break;
+    }
+
+    from += DISTRIBUTIONS_PAGE_SIZE;
+  }
+
+  return allRows;
+}
+
 export function useDistributions(date?: string, dateRange?: { start: string; end: string }) {
   return useQuery({
     queryKey: ['distributions', date, dateRange],
-    queryFn: async () => {
-      let query = supabase
-        .from('distributions' as never)
-        .select(`
-          *,
-          rider:riders(*),
-          batch:inventory_batches(
-            *,
-            product:products(*)
-          )
-        `)
-        .order('distributed_at', { ascending: false })
-        .range(0, 9999);
-      
-      // If date range provided, use it (for reports)
-      if (dateRange) {
-        query = query
-          .gte('distributed_at', `${dateRange.start}T00:00:00`)
-          .lte('distributed_at', `${dateRange.end}T23:59:59`);
-      } 
-      // Otherwise use single date (for daily view)
-      else if (date) {
-        const startOfDay = `${date}T00:00:00`;
-        const endOfDay = `${date}T23:59:59`;
-        query = query
-          .gte('distributed_at', startOfDay)
-          .lte('distributed_at', endOfDay);
-      }
-      
-      const { data, error } = await query;
-      
-      if (error) throw error;
-      return data as Distribution[];
-    },
+    queryFn: () => fetchDistributionPages(date, dateRange),
   });
 }
 
