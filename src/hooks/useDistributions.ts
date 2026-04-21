@@ -17,7 +17,8 @@ export function useDistributions(date?: string, dateRange?: { start: string; end
             product:products(*)
           )
         `)
-        .order('distributed_at', { ascending: false });
+        .order('distributed_at', { ascending: false })
+        .range(0, 9999);
       
       // If date range provided, use it (for reports)
       if (dateRange) {

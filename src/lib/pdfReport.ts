@@ -163,7 +163,7 @@ export function generateDailyReport(data: ReportData) {
     // Stok akhir: stok awal + penambahan - terjual
 
     // Ambil produksi pada periode (jika ada fieldnya, misal item.total_produced_in_period)
-    const producedInPeriod = item.total_produced_in_period || 0;
+    const producedInPeriod = (item as { total_produced_in_period?: number }).total_produced_in_period || 0;
     // Stok akhir = stok_in_inventory (saat ini di gudang)
     const stokAkhir = item.total_in_inventory;
     // Stok awal = stok akhir - penambahan + terjual
