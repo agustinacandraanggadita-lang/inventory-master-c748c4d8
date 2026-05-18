@@ -95,7 +95,7 @@ export function Leaderboard() {
         <div className="p-4 border-b border-border">
           <h3 className="font-semibold flex items-center gap-2">
             <Trophy className="w-5 h-5 text-warning" />
-            Leaderboard Rider CUP
+            Leaderboard Penjualan CUP (Rider & Kantin)
           </h3>
         </div>
         <div className="p-8 text-center text-muted-foreground">
@@ -112,7 +112,7 @@ export function Leaderboard() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold flex items-center gap-2">
             <Trophy className="w-5 h-5 text-warning" />
-            Leaderboard Rider CUP
+            Leaderboard Penjualan CUP (Rider & Kantin)
           </h3>
           <button
             onClick={downloadAsImage}
@@ -165,7 +165,7 @@ export function Leaderboard() {
       >
         {/* Header untuk export */}
         <div className="mb-6 pb-4 border-b-2 border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-800">Leaderboard Rider CUP</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Leaderboard Penjualan CUP</h2>
           <p className="text-sm text-gray-600 mt-1">
             {getFilterLabel()} • {activeFilter === 'today' ? format(new Date(), 'dd MMMM yyyy', { locale: localeId }) : `${dateRange.start} s/d ${dateRange.end}`}
           </p>
@@ -181,7 +181,7 @@ export function Leaderboard() {
 
             return (
               <div
-                key={entry.rider_id}
+                key={`${entry.type}-${entry.id}`}
                 className={`py-4 flex items-center gap-4 ${
                   index < 3 ? 'bg-gray-50' : ''
                 }`}
@@ -197,11 +197,20 @@ export function Leaderboard() {
                   )}
                 </div>
 
-                {/* Rider Info */}
+                {/* Rider/Kantin Info */}
                 <div className="flex-1">
-                  <p className="font-semibold text-gray-800">
-                    {entry.rider_name}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-gray-800">
+                      {entry.name}
+                    </p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      entry.type === 'canteen' 
+                        ? 'bg-orange-100 text-orange-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {entry.type === 'canteen' ? '🏪 Kantin' : '🚴 Rider'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Total Cups */}

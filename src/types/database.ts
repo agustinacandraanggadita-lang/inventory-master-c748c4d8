@@ -89,6 +89,18 @@ export interface RejectSummary {
   reject_details: RejectInfo[];
 }
 
+export type CanteenType = 'Kantin Garuda' | 'Kantin BTB AU';
+
+export interface CanteenSale {
+  id: string;
+  canteen: CanteenType;
+  cups_sold: number;
+  sale_date: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DailyReport {
   date: string;
   productions: {
