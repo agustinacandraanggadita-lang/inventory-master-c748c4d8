@@ -5,7 +5,7 @@ import { useRiders } from './useRiders';
 
 // Default allocation per rider for each product
 export const DEFAULT_PRODUCT_ALLOCATION: Record<string, number> = {
-  'Kopi Aren': 30,
+  'Kopi Aren': 25,
   'Matcha': 5,
   'Bubblegum': 5,
   'Taro': 5,

@@ -85,7 +85,7 @@ function DistributionPage() {
 
   // Default distribution config
   const DEFAULT_DISTRIBUTION_CONFIG = {
-    'Kopi Aren': 30,
+    'Kopi Aren': 25,
     'Matcha': 5,
     'Coklat': 5,
     'Bubblegum': 5,
@@ -98,7 +98,7 @@ function DistributionPage() {
     'Syrup Pandan',
     'Syrup Caramel',
     'Syrup Salted Caramel',
-    'Syrup Vanila',
+    'Syrup Vanilla',
     'Syrup Tiramisu',
     'Syrup Hazelnut',
     'Milk Coklat',
@@ -875,7 +875,7 @@ function DistributionPage() {
                   >
                     <p className="font-medium">📦 Default Distribution</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Kopi Aren 30pcs, Matcha/Coklat/Taro 5pcs, Add-on 5pcs
+                      Kopi Aren 25pcs, Matcha/Coklat/Taro 5pcs, Add-on 5pcs
                     </p>
                   </button>
 
