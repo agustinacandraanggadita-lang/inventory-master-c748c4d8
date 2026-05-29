@@ -63,3 +63,29 @@ export function useDeleteRider() {
     },
   });
 }
+
+export function useUpdateRiderStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { data, error } = await supabase
+        .from('riders' as never)
+        .update({ is_active, updated_at: new Date().toISOString() } as never)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data as Rider;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['riders'] });
+      const status = data.is_active ? 'aktif' : 'tidak aktif';
+      toast.success(`Rider berhasil diubah menjadi ${status}`);
+    },
+    onError: (error: Error) => {
+      toast.error('Gagal mengubah status rider: ' + error.message);
+    },
+  });
+}

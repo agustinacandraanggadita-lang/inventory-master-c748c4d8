@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useDistributions } from '@/hooks/useDistributions';
 import { useCanteenSales } from '@/hooks/useCanteenSales';
+import { useRiders } from '@/hooks/useRiders';
 
 export interface RiderLeaderboardEntry {
   id: string; // rider_id atau canteen name
@@ -13,13 +14,23 @@ export interface RiderLeaderboardEntry {
 export function useRiderLeaderboard(dateRange: { start: string; end: string }) {
   const { data: distributions } = useDistributions(undefined, dateRange);
   const { data: canteenSales } = useCanteenSales(dateRange);
+  const { data: riders } = useRiders();
 
   const leaderboard = useMemo(() => {
     const entries: RiderLeaderboardEntry[] = [];
 
+    // Create a map of active riders for quick lookup
+    const activeRiderMap = new Map<string, boolean>();
+    if (riders) {
+      riders.forEach((rider) => {
+        // Default is_active to true if not specified
+        activeRiderMap.set(rider.id, rider.is_active !== false);
+      });
+    }
+
     // Hitung dari rider distributions
     if (distributions) {
-      const ridersSold = new Map<string, { name: string; total: number }>();
+      const ridersSold = new Map<string, { name: string; total: number; is_active: boolean }>();
 
       distributions.forEach((dist) => {
         const batch = dist.batch;
@@ -27,18 +38,20 @@ export function useRiderLeaderboard(dateRange: { start: string; end: string }) {
         if (batch?.product?.category === 'product' && dist.sold_quantity > 0) {
           const riderId = dist.rider_id;
           const riderName = dist.rider?.name || 'Unknown';
+          const isActive = activeRiderMap.get(riderId) ?? true; // Default true if not found
           const existing = ridersSold.get(riderId);
           
           if (existing) {
             existing.total += dist.sold_quantity;
           } else {
-            ridersSold.set(riderId, { name: riderName, total: dist.sold_quantity });
+            ridersSold.set(riderId, { name: riderName, total: dist.sold_quantity, is_active: isActive });
           }
         }
       });
 
       Array.from(ridersSold.entries()).forEach(([riderId, data]) => {
-        if (data.total > 0) {
+        // Only add active riders to leaderboard
+        if (data.total > 0 && data.is_active) {
           entries.push({
             id: riderId,
             name: data.name,
@@ -81,7 +94,7 @@ export function useRiderLeaderboard(dateRange: { start: string; end: string }) {
       }));
 
     return sorted;
-  }, [distributions, canteenSales]);
+  }, [distributions, canteenSales, riders]);
 
   const totalCupsSold = useMemo(
     () => leaderboard.reduce((acc, e) => acc + e.total_cups, 0),

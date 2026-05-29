@@ -151,18 +151,24 @@ export type Database = {
           id: string
           name: string
           phone: string | null
+          is_active: boolean
+          updated_at: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
           phone?: string | null
+          is_active?: boolean
+          updated_at?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
           phone?: string | null
+          is_active?: boolean
+          updated_at?: string | null
         }
         Relationships: []
       }

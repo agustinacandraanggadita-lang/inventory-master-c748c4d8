@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useRiders, useAddRider, useDeleteRider } from '@/hooks/useRiders';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useRiders, useAddRider, useDeleteRider, useUpdateRiderStatus } from '@/hooks/useRiders';
 import { useAvailableBatches } from '@/hooks/useInventory';
 import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock, usePendingDistributions } from '@/hooks/useDistributions';
 import { useReconciliationSummary } from '@/hooks/useReconciliation';
 import { useProducts } from '@/hooks/useProducts';
 import { PageLayout } from '@/components/PageLayout';
-import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle, Database, Trash2 } from 'lucide-react';
+import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle, Database, Trash2, Power, PowerOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -40,6 +41,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 function DistributionPage() {
+  const isMobile = useIsMobile();
   const { data: riders } = useRiders();
   const { data: availableBatches } = useAvailableBatches();
   const { data: allProducts } = useProducts();
@@ -49,6 +51,7 @@ function DistributionPage() {
   const reconciliationSummary = useReconciliationSummary({ start: today, end: today });
   const addRider = useAddRider();
   const deleteRider = useDeleteRider();
+  const updateRiderStatus = useUpdateRiderStatus();
   const addDistribution = useAddDistribution();
   const bulkDistribution = useBulkDistribution();
   const adjustRiderStock = useAdjustRiderStock();
@@ -803,41 +806,86 @@ function DistributionPage() {
           </Dialog>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-2">
-          {riders?.map((rider) => (
+          {riders?.map((rider) => {
+            const isActive = rider.is_active !== false; // default true jika undefined
+            return (
             <div
               key={rider.id}
-              className="flex-shrink-0 relative group"
+              className={cn(
+                "flex-shrink-0 relative group rounded-lg transition-all",
+                isActive ? "opacity-100" : "opacity-60"
+              )}
             >
               <button
                 onClick={() => {
                   setAutoDistributionRiderId(rider.id);
                   setAutoDistributionMode(null); // Show modal
                 }}
-                className="w-full bg-card border border-border rounded-lg px-4 py-3 min-w-[140px] hover:border-primary hover:bg-primary/5 transition-all cursor-pointer text-left"
+                disabled={!isActive}
+                className={cn(
+                  "w-full bg-card border border-border rounded-lg px-4 py-3 min-w-[140px] hover:border-primary hover:bg-primary/5 transition-all cursor-pointer text-left",
+                  !isActive && "opacity-60 cursor-not-allowed"
+                )}
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                  <div className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center",
+                    isActive ? "bg-primary/10 text-primary" : "bg-muted/50 text-muted-foreground"
+                  )}>
                     <User className="w-4 h-4" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-medium text-sm">{rider.name}</p>
                     {rider.phone && (
                       <p className="text-xs text-muted-foreground">{rider.phone}</p>
                     )}
+                    {!isActive && (
+                      <p className="text-xs text-red-500 font-medium">Tidak Aktif</p>
+                    )}
                   </div>
                 </div>
               </button>
-              {/* Delete button on hover */}
+              
+              {/* Status toggle button - Always visible on mobile, hover on desktop */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateRiderStatus.mutate({ id: rider.id, is_active: !isActive });
+                }}
+                className={cn(
+                  "absolute bottom-1 right-1 p-1.5 rounded transition-opacity",
+                  // Mobile: always visible
+                  isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                  isActive 
+                    ? "bg-yellow-500/90 hover:bg-yellow-600 text-white" 
+                    : "bg-green-500/90 hover:bg-green-600 text-white"
+                )}
+                title={isActive ? "Tandai sebagai tidak aktif" : "Tandai sebagai aktif"}
+                disabled={updateRiderStatus.isPending}
+              >
+                {isActive ? (
+                  <PowerOff className="w-4 h-4" />
+                ) : (
+                  <Power className="w-4 h-4" />
+                )}
+              </button>
+
+              {/* Delete button - Always visible on mobile, hover on desktop */}
               <button
                 onClick={(e) => openDeleteDialog(e, rider.id, rider.name)}
-                className="absolute top-1 right-1 p-1.5 bg-red-500/90 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                className={cn(
+                  "absolute top-1 right-1 p-1.5 bg-red-500/90 text-white rounded transition-opacity",
+                  // Mobile: always visible
+                  isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}
                 title={`Hapus rider ${rider.name}`}
                 disabled={deleteRider.isPending}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-          ))}
+            );
+          })}
           {(!riders || riders.length === 0) && (
             <p className="text-sm text-muted-foreground">Belum ada rider</p>
           )}
