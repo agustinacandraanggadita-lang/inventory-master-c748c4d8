@@ -301,3 +301,39 @@ export function useUpdateWarehouseReject() {
   });
 }
 
+export function useDeleteBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      // Get batch first to check if it has distributions
+      const { data: batchData, error: fetchError } = await supabase
+        .from('inventory_batches' as never)
+        .select('id')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!batchData) throw new Error('Batch tidak ditemukan');
+
+      // Delete batch
+      const { error } = await supabase
+        .from('inventory_batches' as never)
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['available-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
+      toast.success('Batch berhasil dihapus');
+    },
+    onError: (error: Error) => {
+      toast.error('Gagal menghapus batch: ' + error.message);
+    },
+  });
+}
+
+

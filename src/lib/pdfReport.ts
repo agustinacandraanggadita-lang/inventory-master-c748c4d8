@@ -225,25 +225,32 @@ export function generateDailyReport(data: ReportData) {
     data.distributions.forEach(dist => {
       const rider = dist.rider?.name || 'Tanpa Nama';
       if (!riderMap.has(rider)) {
-        riderMap.set(rider, { produk: 0, nominal: 0 });
+        riderMap.set(rider, { produk: 0, cup: 0, nominal: 0 });
       }
       const sold = dist.sold_quantity || 0;
       const price = dist.batch?.product?.price || 0;
+      const isProduct = dist.batch?.product?.category === 'product';
+      
       riderMap.get(rider).produk += sold;
+      if (isProduct) {
+        riderMap.get(rider).cup += sold;
+      }
       riderMap.get(rider).nominal += sold * price;
     });
     const riderRows = Array.from(riderMap.entries()).map(([rider, val]) => [
       rider,
       val.produk.toString(),
+      val.cup.toString(),
       'Rp ' + val.nominal.toLocaleString('id-ID'),
     ]);
     // Total keseluruhan
     const totalProduk = Array.from(riderMap.values()).reduce((a, b) => a + b.produk, 0);
+    const totalCup = Array.from(riderMap.values()).reduce((a, b) => a + b.cup, 0);
     const totalNominal = Array.from(riderMap.values()).reduce((a, b) => a + b.nominal, 0);
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Rider', 'Total Produk Terjual', 'Total Nominal Penjualan']],
+      head: [['Rider', 'Total Produk Terjual', 'Total Cup', 'Total Nominal Penjualan']],
       body: riderRows,
       theme: 'grid',
       headStyles: {
@@ -265,7 +272,7 @@ export function generateDailyReport(data: ReportData) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(42, 157, 143);
-    doc.text(`TOTAL KESELURUHAN: ${totalProduk} produk | Rp ${totalNominal.toLocaleString('id-ID')}`, 14, yPos);
+    doc.text(`TOTAL KESELURUHAN: ${totalProduk} produk | ${totalCup} cup | Rp ${totalNominal.toLocaleString('id-ID')}`, 14, yPos);
     yPos += 10;
 
     // === DETAIL PENJUALAN PRODUK PER RIDER ===

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useProducts, useAddProduct, useUpdateProduct, useDeleteProduct } from '@/hooks/useProducts';
 import { useProductExpirySettings } from '@/hooks/useSettings';
-import { useInventoryBatches, useAddBatch, useRejectBatch, useUpdateBatchQuantity, useUpdateWarehouseReject } from '@/hooks/useInventory';
+import { useInventoryBatches, useAddBatch, useRejectBatch, useUpdateBatchQuantity, useUpdateWarehouseReject, useDeleteBatch } from '@/hooks/useInventory';
 import { PageLayout } from '@/components/PageLayout';
 import { Factory, Plus, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle, Edit2, AlertOctagon, Coffee, Cookie } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -45,16 +45,18 @@ function ProductionManagementPage() {
   const rejectBatch = useRejectBatch();
   const updateBatchQuantity = useUpdateBatchQuantity();
   const updateWarehouseReject = useUpdateWarehouseReject();
+  const deleteBatch = useDeleteBatch();
 
   // Production States
   const [isProductionOpen, setIsProductionOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [selectedRejectBatch, setSelectedRejectBatch] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedDeleteBatch, setSelectedDeleteBatch] = useState<string | null>(null);
+  const [editBatchDialogOpen, setEditBatchDialogOpen] = useState(false);
   const [selectedEditBatch, setSelectedEditBatch] = useState<any>(null);
-  const [editedQuantity, setEditedQuantity] = useState('');
-  const [editedExpiryDate, setEditedExpiryDate] = useState('');
+  const [editBatchQuantity, setEditBatchQuantity] = useState('');
   const [warehouseRejectDialogOpen, setWarehouseRejectDialogOpen] = useState(false);
   const [selectedWarehouseRejectBatch, setSelectedWarehouseRejectBatch] = useState<any>(null);
   const [warehouseRejectQuantity, setWarehouseRejectQuantity] = useState('');
@@ -154,6 +156,40 @@ function ProductionManagementPage() {
     setRejectDialogOpen(false);
     setSelectedRejectBatch(null);
     setRejectReason('');
+  };
+
+  const handleDeleteBatch = async () => {
+    if (!selectedDeleteBatch) return;
+    
+    await deleteBatch.mutateAsync(selectedDeleteBatch);
+    
+    setDeleteDialogOpen(false);
+    setSelectedDeleteBatch(null);
+  };
+
+  const handleEditBatchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEditBatch || !editBatchQuantity) return;
+
+    const newQty = parseInt(editBatchQuantity);
+    if (isNaN(newQty) || newQty < 0) {
+      toast.error('Jumlah stok harus angka positif');
+      return;
+    }
+
+    if (newQty > selectedEditBatch.initial_quantity) {
+      toast.error(`Tidak bisa lebih dari ${selectedEditBatch.initial_quantity} (jumlah diproduksi)`);
+      return;
+    }
+
+    await updateBatchQuantity.mutateAsync({
+      id: selectedEditBatch.id,
+      quantity: newQty,
+    });
+
+    setEditBatchDialogOpen(false);
+    setSelectedEditBatch(null);
+    setEditBatchQuantity('');
   };
 
   // Product Management Functions
@@ -329,72 +365,209 @@ function ProductionManagementPage() {
               <div>
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Daftar Batch ({batches?.length || 0})
+                  Daftar Batch
                 </h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {!batches || batches.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-4">Belum ada batch</p>
-                  ) : (
-                    batches.map((batch) => {
-                      const isExpanded = expandedProducts[batch.id];
-                      const daysUntilExpiry = Math.ceil(
-                        (new Date(batch.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-                      );
-                      const isExpired = daysUntilExpiry < 0;
-                      const isExpiring = daysUntilExpiry < 3;
-
+                
+                {!batches || batches.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">Belum ada batch</p>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Active Batches */}
+                    {(() => {
+                      const activeBatches = batches.filter(b => {
+                        const daysUntilExpiry = Math.ceil(
+                          (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                        );
+                        return b.current_quantity > 0 && daysUntilExpiry >= 0;
+                      });
+                      
+                      if (activeBatches.length === 0) return null;
+                      
                       return (
-                        <div key={batch.id} className="border border-border rounded-lg overflow-hidden">
-                          <button
-                            onClick={() => setExpandedProducts(prev => ({ ...prev, [batch.id]: !isExpanded }))}
-                            className="w-full p-3 hover:bg-muted/50 transition-colors flex items-center justify-between"
-                          >
-                            <div className="text-left flex-1 min-w-0">
-                              <p className="font-medium text-sm">{batch.product?.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Produksi: {format(new Date(batch.production_date), 'dd/MM/yy')} • Exp: {format(new Date(batch.expiry_date), 'dd/MM/yy')}
-                              </p>
-                            </div>
-                            <div className="text-right text-xs ml-2 flex-shrink-0">
-                              <p className="font-semibold">{batch.current_quantity}</p>
-                              <p className="text-muted-foreground">
-                                {isExpired ? '❌ Expired' : isExpiring ? `⚠️ ${daysUntilExpiry}h` : `${daysUntilExpiry}h`}
-                              </p>
-                            </div>
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 ml-2 flex-shrink-0" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 ml-2 flex-shrink-0" />
-                            )}
-                          </button>
+                        <div>
+                          <h4 className="text-sm font-medium text-green-700 mb-2 flex items-center gap-2">
+                            <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                            Stok Aktif ({activeBatches.length})
+                          </h4>
+                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {activeBatches.map((batch) => {
+                              const isExpanded = expandedProducts[batch.id];
+                              const daysUntilExpiry = Math.ceil(
+                                (new Date(batch.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                              );
+                              const stockPercentage = batch.initial_quantity > 0 
+                                ? Math.round((batch.current_quantity / batch.initial_quantity) * 100)
+                                : 0;
+                              const isExpiring = daysUntilExpiry < 3;
 
-                          {isExpanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="border-t border-border bg-muted/20 p-3 space-y-2"
-                            >
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedRejectBatch(batch.id);
-                                    setRejectDialogOpen(true);
-                                  }}
-                                >
-                                  <Trash2 className="w-3 h-3 mr-1" />
-                                  Musnahkan
-                                </Button>
-                              </div>
-                            </motion.div>
-                          )}
+                              return (
+                                <div key={batch.id} className="border border-green-200 bg-green-50/50 rounded-lg overflow-hidden">
+                                  <button
+                                    onClick={() => setExpandedProducts(prev => ({ ...prev, [batch.id]: !isExpanded }))}
+                                    className="w-full p-3 hover:bg-green-100/50 transition-colors flex items-center justify-between"
+                                  >
+                                    <div className="text-left flex-1 min-w-0">
+                                      <p className="font-medium text-sm">{batch.product?.name}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {format(new Date(batch.production_date), 'dd/MM/yy')} • Exp: {format(new Date(batch.expiry_date), 'dd/MM/yy')}
+                                      </p>
+                                    </div>
+                                    <div className="text-right text-xs ml-2 flex-shrink-0">
+                                      <p className="font-semibold text-sm">{batch.current_quantity} / {batch.initial_quantity}</p>
+                                      <div className="flex items-center gap-1">
+                                        <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                          <div 
+                                            className={`h-full ${stockPercentage > 50 ? 'bg-green-500' : stockPercentage > 25 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                            style={{ width: `${stockPercentage}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-xs font-medium w-8">{stockPercentage}%</span>
+                                      </div>
+                                      <p className="text-muted-foreground">
+                                        {isExpiring ? `⚠️ ${daysUntilExpiry}h` : `${daysUntilExpiry}h`}
+                                      </p>
+                                    </div>
+                                    {isExpanded ? (
+                                      <ChevronUp className="w-4 h-4 ml-2 flex-shrink-0" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4 ml-2 flex-shrink-0" />
+                                    )}
+                                  </button>
+
+                                  {isExpanded && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      className="border-t border-green-200 bg-green-100/30 p-3 space-y-2"
+                                    >
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm"
+                                          className="bg-blue-600 hover:bg-blue-700"
+                                          onClick={() => {
+                                            setSelectedEditBatch(batch);
+                                            setEditBatchQuantity(batch.current_quantity.toString());
+                                            setEditBatchDialogOpen(true);
+                                          }}
+                                        >
+                                          <Edit2 className="w-3 h-3 mr-1" />
+                                          Edit Stok
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setSelectedRejectBatch(batch.id);
+                                            setRejectDialogOpen(true);
+                                          }}
+                                        >
+                                          <Trash2 className="w-3 h-3 mr-1" />
+                                          Musnahkan
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                          onClick={() => {
+                                            setSelectedDeleteBatch(batch.id);
+                                            setDeleteDialogOpen(true);
+                                          }}
+                                        >
+                                          <AlertOctagon className="w-3 h-3 mr-1" />
+                                          Hapus
+                                        </Button>
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
-                    })
-                  )}
-                </div>
+                    })()}
+
+                    {/* Empty/Expired Batches */}
+                    {(() => {
+                      const emptyBatches = batches.filter(b => {
+                        const daysUntilExpiry = Math.ceil(
+                          (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                        );
+                        return b.current_quantity === 0 || daysUntilExpiry < 0;
+                      });
+                      
+                      if (emptyBatches.length === 0) return null;
+                      
+                      return (
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                            <span className="inline-block w-2 h-2 bg-gray-400 rounded-full"></span>
+                            Habis / Expired ({emptyBatches.length})
+                          </h4>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {emptyBatches.map((batch) => {
+                              const isExpanded = expandedProducts[batch.id];
+                              const daysUntilExpiry = Math.ceil(
+                                (new Date(batch.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                              );
+                              const isExpired = daysUntilExpiry < 0;
+
+                              return (
+                                <div key={batch.id} className="border border-gray-200 bg-gray-50/50 rounded-lg overflow-hidden">
+                                  <button
+                                    onClick={() => setExpandedProducts(prev => ({ ...prev, [batch.id]: !isExpanded }))}
+                                    className="w-full p-3 hover:bg-gray-100/50 transition-colors flex items-center justify-between"
+                                  >
+                                    <div className="text-left flex-1 min-w-0">
+                                      <p className="font-medium text-sm text-gray-600">{batch.product?.name}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {format(new Date(batch.production_date), 'dd/MM/yy')} • Exp: {format(new Date(batch.expiry_date), 'dd/MM/yy')}
+                                      </p>
+                                    </div>
+                                    <div className="text-right text-xs ml-2 flex-shrink-0">
+                                      <p className="font-semibold text-sm text-gray-500">0 / {batch.initial_quantity}</p>
+                                      <p className="text-muted-foreground">
+                                        {isExpired ? '❌ Expired' : '⭕ Habis'}
+                                      </p>
+                                    </div>
+                                    {isExpanded ? (
+                                      <ChevronUp className="w-4 h-4 ml-2 flex-shrink-0" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4 ml-2 flex-shrink-0" />
+                                    )}
+                                  </button>
+
+                                  {isExpanded && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      className="border-t border-gray-200 bg-gray-100/30 p-3 space-y-2"
+                                    >
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        onClick={() => {
+                                          setSelectedDeleteBatch(batch.id);
+                                          setDeleteDialogOpen(true);
+                                        }}
+                                      >
+                                        <AlertOctagon className="w-3 h-3 mr-1" />
+                                        Hapus Data
+                                      </Button>
+                                    </motion.div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
           </AccordionContent>
@@ -648,6 +821,140 @@ function ProductionManagementPage() {
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      {/* Reject Batch Dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Musnahkan Batch</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleRejectBatch} className="space-y-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Alasan Pemusnahan</label>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Contoh: Rusak, Kadaluarsa, dsb"
+                className="input-field min-h-24"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                type="submit"
+                variant="destructive"
+                disabled={!rejectReason.trim()}
+              >
+                Musnahkan
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRejectDialogOpen(false)}
+              >
+                Batal
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Batch Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Hapus Batch</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+              <p className="text-sm font-medium text-red-800 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Tindakan Ini Tidak Bisa Dibatalkan
+              </p>
+              <p className="text-sm text-red-700">
+                Data batch akan dihapus permanen dari sistem. Gunakan tombol ini hanya untuk batch lama yang tidak perlu lagi.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="destructive"
+                onClick={handleDeleteBatch}
+                disabled={deleteBatch.isPending}
+              >
+                {deleteBatch.isPending ? 'Menghapus...' : 'Ya, Hapus Batch'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+              >
+                Batal
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Batch Dialog */}
+      <Dialog open={editBatchDialogOpen} onOpenChange={setEditBatchDialogOpen}>
+        <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Edit Stok Batch</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditBatchSubmit} className="space-y-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Produk</label>
+              <p className="text-sm font-semibold">{selectedEditBatch?.product?.name}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-2">Diproduksi (Max)</label>
+                <input
+                  type="number"
+                  value={selectedEditBatch?.initial_quantity || 0}
+                  disabled
+                  className="input-field bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Sisa Stok</label>
+                <input
+                  type="number"
+                  value={editBatchQuantity}
+                  onChange={(e) => setEditBatchQuantity(e.target.value)}
+                  placeholder="Masukkan jumlah sisa stok"
+                  className="input-field"
+                  min="0"
+                  max={selectedEditBatch?.initial_quantity || 0}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-700">
+                <strong>Info:</strong> Anda bisa edit jumlah stok di sini. Misalnya, jika ada produk baru yang habis di produksi, ubah jumlahnya menjadi 0 atau angka yang sesuai. Tidak perlu buat batch baru.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={!editBatchQuantity || updateBatchQuantity.isPending}
+              >
+                {updateBatchQuantity.isPending ? 'Menyimpan...' : 'Simpan'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditBatchDialogOpen(false)}
+              >
+                Batal
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
