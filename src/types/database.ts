@@ -103,6 +103,35 @@ export interface CanteenSale {
   updated_at: string;
 }
 
+export interface DistributionSetting {
+  id: string;
+  rider_id: string;
+  product_id: string;
+  default_quantity: number;
+  created_at: string;
+  updated_at: string;
+  rider?: Rider;
+  product?: Product;
+}
+
+export interface GlobalDistributionDefault {
+  id: string;
+  product_id: string;
+  default_quantity: number;
+  created_at: string;
+  updated_at: string;
+  product?: Product;
+}
+
+export interface ProductExpirySetting {
+  id: string;
+  product_id: string;
+  default_shelf_life_days: number;
+  created_at: string;
+  updated_at: string;
+  product?: Product;
+}
+
 export interface DailyReport {
   date: string;
   productions: {

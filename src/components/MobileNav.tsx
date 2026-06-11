@@ -1,14 +1,14 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Package, Factory, Truck, FileText, Users, Home, Coffee } from 'lucide-react';
+import { Factory, Truck, FileText, Home, Coffee, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Dashboard' },
-  { path: '/products', icon: Package, label: 'Produk' },
   { path: '/production', icon: Factory, label: 'Produksi' },
   { path: '/distribution', icon: Truck, label: 'Distribusi' },
   { path: '/canteen', icon: Coffee, label: 'Kantin' },
   { path: '/reports', icon: FileText, label: 'Laporan' },
+  { path: '/settings', icon: Settings, label: 'Pengaturan' },
 ];
 
 export function MobileNav() {

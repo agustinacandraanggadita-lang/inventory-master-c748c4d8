@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
+import { useProductExpirySettings } from '@/hooks/useSettings';
 import { useInventoryBatches, useAddBatch, useRejectBatch, useUpdateBatchQuantity, useUpdateWarehouseReject } from '@/hooks/useInventory';
 import { PageLayout } from '@/components/PageLayout';
 import { Factory, Plus, Package, Clock, ChevronDown, ChevronUp, Trash2, AlertTriangle, Edit2, AlertOctagon } from 'lucide-react';
@@ -28,6 +29,7 @@ import { Calendar } from '@/components/ui/calendar';
 
 function ProductionPage() {
   const { data: products } = useProducts();
+  const { data: expirySettings } = useProductExpirySettings();
   const { data: batches, isLoading } = useInventoryBatches();
   const addBatch = useAddBatch();
   const rejectBatch = useRejectBatch();
@@ -54,18 +56,27 @@ function ProductionPage() {
   // Get selected product
   const selectedProduct = products?.find(p => p.id === productId);
   
-  // Calculate default suggestion based on product category
+  // Get default shelf life from settings or use fallback
   const getDefaultExpiryDays = () => {
-    return selectedProduct?.category === 'product' ? 7 : 3;
+    if (!selectedProduct) return 7;
+    
+    // Check if there's a custom setting for this product
+    const setting = expirySettings?.find(s => s.product_id === selectedProduct.id);
+    if (setting) {
+      return setting.default_shelf_life_days;
+    }
+    
+    // Otherwise use category-based default
+    return selectedProduct.category === 'product' ? 7 : 3;
   };
 
-  // Auto-update expiry when product changes (only if expiry is still default)
+  // Auto-update expiry when product changes
   const handleProductChange = (value: string) => {
     setProductId(value);
     const product = products?.find(p => p.id === value);
     if (product) {
-      // Set default expiry based on product category
-      const defaultDays = product?.category === 'product' ? 7 : 3;
+      // Get default expiry days from settings
+      const defaultDays = getDefaultExpiryDays();
       const newExpiryDate = format(addDays(new Date(productionDate), defaultDays), 'yyyy-MM-dd');
       setExpiryDate(newExpiryDate);
     }

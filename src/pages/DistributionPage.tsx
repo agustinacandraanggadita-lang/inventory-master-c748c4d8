@@ -5,6 +5,7 @@ import { useAvailableBatches } from '@/hooks/useInventory';
 import { useDistributions, useAddDistribution, useBulkDistribution, useAdjustRiderStock, usePendingDistributions } from '@/hooks/useDistributions';
 import { useReconciliationSummary } from '@/hooks/useReconciliation';
 import { useProducts } from '@/hooks/useProducts';
+import { useRiderDistributionSettings, useAllRiderDistributionSettings, useGlobalDistributionDefaults } from '@/hooks/useSettings';
 import { PageLayout } from '@/components/PageLayout';
 import { Truck, Plus, User, Package, Send, Check, X, TrendingDown, RotateCcw, AlertCircle, Database, Trash2, Power, PowerOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -45,6 +46,8 @@ function DistributionPage() {
   const { data: riders } = useRiders();
   const { data: availableBatches } = useAvailableBatches();
   const { data: allProducts } = useProducts();
+  const { data: allRiderSettings } = useAllRiderDistributionSettings();
+  const { data: globalDefaults } = useGlobalDistributionDefaults();
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: todayDistributions } = useDistributions(today);
   const { data: pendingDistributions } = usePendingDistributions();
@@ -64,6 +67,7 @@ function DistributionPage() {
   const [adjustmentStates, setAdjustmentStates] = useState<Record<string, { action: 'sell' | 'return' | 'reject'; amount: string }>>({});
   const [autoDistributionRiderId, setAutoDistributionRiderId] = useState<string | null>(null);
   const [autoDistributionMode, setAutoDistributionMode] = useState<'default' | 'custom' | null>(null);
+  const [autoDistributionDate, setAutoDistributionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [adjustmentDate, setAdjustmentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   
   // Delete rider confirmation state
@@ -86,13 +90,35 @@ function DistributionPage() {
   const [bulkQuantity, setBulkQuantity] = useState('5');
   const [bulkDistDate, setBulkDistDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
-  // Default distribution config
+  // Default distribution config (fallback)
   const DEFAULT_DISTRIBUTION_CONFIG = {
     'Kopi Aren': 25,
     'Matcha': 5,
     'Coklat': 5,
     'Bubblegum': 5,
     'Taro': 5,
+  };
+
+  // Helper to get distribution quantity for a product and rider
+  const getDistributionQuantity = (riderId: string, productId: string): number => {
+    // Check rider-specific settings first
+    const riderSetting = allRiderSettings?.find(
+      s => s.rider_id === riderId && s.product_id === productId
+    );
+    if (riderSetting) return riderSetting.default_quantity;
+
+    // Then check global defaults
+    const globalSetting = globalDefaults?.find(s => s.product_id === productId);
+    if (globalSetting) return globalSetting.default_quantity;
+
+    // Fallback to config
+    const product = allProducts?.find(p => p.id === productId);
+    if (product && product.name in DEFAULT_DISTRIBUTION_CONFIG) {
+      return DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG];
+    }
+
+    // Default for add-ons or unknown products
+    return product?.category === 'addon' ? 5 : 5;
   };
 
   // Product order for sorting in reconciliation
@@ -123,39 +149,13 @@ function DistributionPage() {
     if (!autoDistributionRiderId) return;
     
     if (mode === 'default') {
-      // Auto-distribute default products
-      const configNames = Object.keys(DEFAULT_DISTRIBUTION_CONFIG).map(k => k.toLowerCase());
-      
-      const productsToDistribute = allProducts?.filter(p => {
-        const name = p.name.toLowerCase().trim();
-        
-        // Include ALL add-ons
-        if (p.category === 'addon') return true;
-        
-        // Include products that match config names
-        // Check exact match or partial match
-        return configNames.some(configName => 
-          name === configName || name.includes(configName)
-        );
-      }) || [];
+      // Auto-distribute using rider-specific or global settings
+      const productsToDistribute = allProducts || [];
 
-      console.log('=== AUTO DISTRIBUTE START ===');
-      console.log('All products in database:', allProducts?.map(p => ({ name: p.name, id: p.id, cat: p.category })));
-      console.log('Config names to match:', configNames);
-      console.log('Products to distribute:', productsToDistribute.map(p => ({ name: p.name, id: p.id, cat: p.category })));
-      console.log('Available batches:', availableBatches?.map(b => {
-        const daysUntil = Math.ceil(
-          (new Date(b.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-        );
-        return {
-          productName: b.product?.name,
-          productId: b.product_id,
-          qty: b.current_quantity,
-          expiry: b.expiry_date,
-          daysUntil,
-          rejected: b.notes?.includes('REJECTED') || false
-        };
-      }));
+      console.log('=== AUTO DISTRIBUTE START (WITH SETTINGS) ===');
+      console.log('Rider ID:', autoDistributionRiderId);
+      console.log('Distribution Date:', autoDistributionDate);
+      console.log('All products:', allProducts?.map(p => ({ name: p.name, id: p.id, cat: p.category })));
 
       let successCount = 0;
       const distributed = new Set<string>();
@@ -192,9 +192,8 @@ function DistributionPage() {
           continue;
         }
 
-        const requiredQuantity = product.category === 'addon' 
-          ? 5 
-          : (DEFAULT_DISTRIBUTION_CONFIG[product.name as keyof typeof DEFAULT_DISTRIBUTION_CONFIG] || 5);
+        // Get quantity from settings
+        const requiredQuantity = getDistributionQuantity(autoDistributionRiderId, product.id);
 
         console.log(`✅ Distributing ${product.name}: Need ${requiredQuantity} units. Available batches: ${validBatches.length}`);
 
@@ -213,6 +212,7 @@ function DistributionPage() {
               rider_id: autoDistributionRiderId,
               batch_id: batch.id,
               quantity: quantityFromBatch,
+              distributed_at: autoDistributionDate,
             });
             successCount++;
             remainingQuantity -= quantityFromBatch;
@@ -249,9 +249,11 @@ function DistributionPage() {
       }
       setAutoDistributionRiderId(null);
       setAutoDistributionMode(null);
+      setAutoDistributionDate(format(new Date(), 'yyyy-MM-dd'));
     } else {
       // Custom distribution - open bulk dialog with this rider pre-selected
       setBulkRider(autoDistributionRiderId);
+      setBulkDistDate(autoDistributionDate);
       setAutoDistributionRiderId(null);
       setAutoDistributionMode(null);
       setIsBulkOpen(true);
@@ -820,6 +822,7 @@ function DistributionPage() {
                 onClick={() => {
                   setAutoDistributionRiderId(rider.id);
                   setAutoDistributionMode(null); // Show modal
+                  setAutoDistributionDate(format(new Date(), 'yyyy-MM-dd')); // Reset date to today
                 }}
                 disabled={!isActive}
                 className={cn(
@@ -915,6 +918,34 @@ function DistributionPage() {
                   Distribusi ke {riders?.find(r => r.id === autoDistributionRiderId)?.name}
                 </h3>
                 
+                <div className="space-y-4 mb-4">
+                  {/* Date Picker */}
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">📅 Tanggal Distribusi</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="input-field w-full text-left"
+                        >
+                          {autoDistributionDate ? format(new Date(autoDistributionDate), 'dd/MM/yyyy') : 'Pilih tanggal'}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={autoDistributionDate ? new Date(autoDistributionDate) : undefined}
+                          onSelect={(date) => setAutoDistributionDate(date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'))}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Pilih tanggal untuk semua produk yang akan didistribusikan
+                    </p>
+                  </div>
+                </div>
+                
                 <div className="space-y-3">
                   <button
                     onClick={() => handleAutoDistribute('default')}
@@ -923,7 +954,7 @@ function DistributionPage() {
                   >
                     <p className="font-medium">📦 Default Distribution</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Kopi Aren 25pcs, Matcha/Coklat/Taro 5pcs, Add-on 5pcs
+                      Gunakan pengaturan yang sudah dibuat
                     </p>
                   </button>
 
@@ -941,6 +972,7 @@ function DistributionPage() {
                     onClick={() => {
                       setAutoDistributionRiderId(null);
                       setAutoDistributionMode(null);
+                      setAutoDistributionDate(format(new Date(), 'yyyy-MM-dd'));
                     }}
                     className="w-full p-2 text-center text-muted-foreground hover:text-foreground transition-colors"
                   >

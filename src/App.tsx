@@ -5,11 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MobileNav } from "@/components/MobileNav";
 import Dashboard from "./pages/Dashboard";
-import ProductsPage from "./pages/ProductsPage";
-import ProductionPage from "./pages/ProductionPage";
+import ProductionManagementPage from "./pages/ProductionManagementPage";
 import DistributionPage from "./pages/DistributionPage";
 import ReportsPage from "./pages/ReportsPage";
 import { CanteenPage } from "./pages/CanteenPage";
+import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,11 +22,12 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/products" element={<ProductsPage />} />
-          <Route path="/production" element={<ProductionPage />} />
+          <Route path="/production" element={<ProductionManagementPage />} />
+          <Route path="/products" element={<ProductionManagementPage />} />
           <Route path="/distribution" element={<DistributionPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/canteen" element={<CanteenPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         <MobileNav />
